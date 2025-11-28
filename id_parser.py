@@ -10,7 +10,7 @@ class INEParser:
 
     def __init__(self):
         # Regex precompilados
-        self.re_curp = re.compile(r"\b[A-Z]{4}\d{6}[A-Z]{6}\d{2}\b")
+        self.re_curp = re.compile(r"\b[A-Z]{4}\d{6}[A-Z]{6}[A-Z0-9]{2}\b")
         self.re_clave_elector = re.compile(r"\b[A-Z0-9]{18}\b")
         self.re_fecha = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
         self.re_anio = re.compile(r"\b(19|20)\d{2}\b")
@@ -19,6 +19,51 @@ class INEParser:
         )
 
     # --------- API pública ---------
+    @staticmethod
+    def merge_names(data_name, data_complete):
+        def score_name(name_dict):
+            score = 0
+            if name_dict.get("apellido_paterno"):
+                score += 1
+            if name_dict.get("apellido_materno"):
+                score += 1
+            if name_dict.get("nombres"):
+                score += 1
+            return score
+
+        score_data_name = score_name(data_name)
+        # print(f"SCORE ROI: {score_data_name}")
+        # print(data_name)
+        score_data_complete = score_name(data_complete)-1 # Penalizacion, solo usar si hubo gran diferencia > 2
+        # print(f"SCORE COMPLETE: {score_data_complete}")
+        # print(data_complete)
+
+        data_out = data_complete.copy()
+        if score_data_complete>score_data_name:
+            data_out["apellido_paterno"] = data_complete["apellido_paterno"]
+            data_out["apellido_materno"] = data_complete["apellido_materno"]
+            data_out["nombres"] = data_complete["nombres"]
+            data_out["nombre_completo"] = data_complete["nombre_completo"]
+            score = score_data_complete
+        else:
+            data_out["apellido_paterno"] = data_name["apellido_paterno"]
+            data_out["apellido_materno"] = data_name["apellido_materno"]
+            data_out["nombres"] = data_name["nombres"]
+            data_out["nombre_completo"] = data_name["nombre_completo"]
+            score = score_data_name
+        return data_out, score
+
+    def public_parse_name(self, raw_text: str) -> Dict:
+        data = {
+            "apellido_paterno": None,
+            "apellido_materno": None,
+            "nombres": None,
+            "nombre_completo": None,
+        }
+        text = self._normalize_text(raw_text)
+        lines = [l for l in text.split("\n") if l.strip()]
+        self._parse_nombre(lines, data)
+        return data
 
     def parse(self, raw_text: str) -> Dict:
         """
@@ -116,38 +161,28 @@ class INEParser:
                 out.append(i)
         return out
 
+    @staticmethod
+    def _letters_and_spaces(line: str) -> str:
+        """
+        Deja solo letras (incluyendo acentos y Ñ) y espacios.
+        Colapsa espacios múltiples.
+        """
+        line = line.upper()
+        line = re.sub(r"[^A-ZÁÉÍÓÚÑ ]+", " ", line)
+        line = re.sub(r"\s+", " ", line)
+        return line.strip()
+
     def _parse_nombre(self, lines: List[str], data: Dict):
         """
         Busca la sección NOMBRE y toma las 2–3 líneas siguientes
-        como apellidos y nombres.
+        como apellidos y nombres, pero limpiando ruido fuerte.
         """
-
-        def _clean_name_line(line: str) -> str:
-            """
-            Limpia una línea de nombre/apellido:
-            - Elimina basura inicial
-            - Elimina basura final
-            """
-
-            line = line.strip()
-
-            # Caso 1: basura al inicio (token corto + muchos espacios + texto bueno)
-            m = re.match(r"^([0-9A-ZÁÉÍÓÚÑ]{1,2})\s{2,}([A-ZÁÉÍÓÚÑ ].+)$", line)
-            if m:
-                line = m.group(2).strip()
-
-            # Caso 2: basura al final (texto bueno + muchos espacios + token corto)
-            m2 = re.match(r"^(.+?[A-ZÁÉÍÓÚÑ])\s{2,}[0-9A-ZÁÉÍÓÚÑ|]{1,3}$", line)
-            if m2:
-                line = m2.group(1).strip()
-
-            return line
         idxs = self._find_line_indices(lines, "NOMBRE")
         if not idxs:
-            return
-
-        idx = idxs[0]
-        name_lines = []
+            idx = 0 # Suele ser la primera linea leida
+        else:
+            idx = idxs[0]
+        raw_name_lines = []
 
         # Suele venir en las 3 líneas siguientes
         for i in range(idx + 1, min(idx + 4, len(lines))):
@@ -156,34 +191,57 @@ class INEParser:
             if any(tag in line for tag in ["DOMICILIO", "CLAVE DE ELECTOR", "CURP"]):
                 break
             if line:
-                line = _clean_name_line(line)
-                if not line:
-                    continue
-                name_lines.append(line)
+                raw_name_lines.append(line)
 
-        if not name_lines:
+        if not raw_name_lines:
             return
 
-        # Heurística típica INE:
-        # [0] apellido paterno
-        # [1] apellido materno
-        # [2:] nombres
-        if len(name_lines) >= 1:
-            data["apellido_paterno"] = name_lines[0]
-        if len(name_lines) >= 2:
-            data["apellido_materno"] = name_lines[1]
-        if len(name_lines) >= 3:
-            data["nombres"] = " ".join(name_lines[2:])
-        elif len(name_lines) == 2:
-            # Si solo hay 2 líneas, asumir que la segunda son nombres
-            data["nombres"] = name_lines[1]
+        # Limpieza fuerte: solo letras y espacios
+        clean_lines = []
+        for ln in raw_name_lines:
+            ln_clean = self._letters_and_spaces(ln)
+            if ln_clean:
+                clean_lines.append(ln_clean)
+
+        if not clean_lines:
+            return
+
+        # Heurística: [0] paterno, [1] materno, [2+] nombres
+        # Y nos quedamos con primeras palabras para quitar ruido residual
+        if len(clean_lines) >= 1:
+            tokens0 = clean_lines[0].split()
+            tokens_validos = [t for t in tokens0 if (len(t) > 2 or t == 'DE' or t == "Y")]  # Limitamos ruido verificando si los apellidos tienen mas de 2 letras
+            if tokens_validos:
+                data["apellido_paterno"] = " ".join(tokens_validos[:3])
+
+        if len(clean_lines) >= 2:
+            tokens1 = clean_lines[1].split()
+            tokens_validos = [t for t in tokens1 if ((len(t) > 2 or t == 'DE' or t == "Y") and not (
+                        t == "SEXO" or t == "SEX"))]  # Limitamos ruido verificando si los nombres tienen mas de 2 letras
+            if len(clean_lines) == 2:
+                # Si solo hay 2 líneas, asumimos que la segunda son nombres
+                if tokens_validos:
+                    data["nombres"] = " ".join(tokens_validos[:3])
+            else:
+                if tokens_validos:
+                    data["apellido_materno"] = " ".join(tokens_validos[:3])
+
+        if len(clean_lines) >= 3:
+            nombres_text = " ".join(clean_lines[2:])
+            tokens_nombres = nombres_text.split()
+
+            tokens_validos = [t for t in tokens_nombres if len(t) > 2] # Limitamos ruido verificando si los nombres tienen mas de 2 letras
+
+            if tokens_validos:
+                data["nombres"] = " ".join(tokens_validos[:3])
 
     @staticmethod
-    def _parse_domicilio_pattern(lines: List[str], data: Dict):
+    def _parse_domicilio_pattern(lines: List[str]):
         dom_start = None
+        max_lines = 3
         for i, line in enumerate(lines):
             l = line.strip()
-            if re.match(r"^[\- ]?\s*(CALLE|AV\.?|AVENIDA|BLVD\.?|BOULEVARD|PASAJE|ANDADOR)\b", l):
+            if re.search(r"^[\-\s]?\s*(CALLE|AV\.?|AVENIDA|BLVD\.?|BOULEVARD|PASAJE|ANDADOR|CDA|CERRADA|AV|LOC|C|COL|DEL\s)", l):
                 dom_start = i
                 break
 
@@ -195,6 +253,8 @@ class INEParser:
         dom_lines = []
         stop_tags = [
             "CLAVE DE ELECTOR",
+            "ELECTOR",
+            "CLAVE",
             "CURP",
             "FECHA DE NACIMIENTO",
             "SECCION",
@@ -202,8 +262,11 @@ class INEParser:
             "VIGENCIA",
             "AÑO DE REGISTRO",
         ]
-
+        line_cnt = 0
         for j in range(dom_start, len(lines)):
+            line_cnt += 1
+            if line_cnt > max_lines:
+                break
             line = lines[j].strip()
             if not line:
                 continue
@@ -211,9 +274,18 @@ class INEParser:
             # Si encontramos otra sección, dejamos de acumular
             if j != dom_start and any(tag in line for tag in stop_tags):
                 break
-            clean = re.sub(r"\s{2,}.*$", "", line).strip()
-            clean = re.sub(r"^[\-\.\·\•\_\|\s]+", "", clean).strip()
-            dom_lines.append(clean)
+            # Limpiar ruido: dejar solo letras, números, comas y espacios
+            clean = line.upper()
+            clean = re.sub(r"[^A-ZÁÉÍÓÚÑ0-9, ]+", " ", clean)
+            clean = re.sub(r"\s+", " ", clean).strip()
+
+            # Eliminar tokens de 1 carácter (ruido tipo 'K')
+            tokens = clean.split()
+            tokens = [t for t in tokens if len(t) > 1 or "," in t]
+            clean = " ".join(tokens)
+
+            if clean:
+                dom_lines.append(clean)
 
         return dom_lines
 
@@ -223,8 +295,22 @@ class INEParser:
         hasta encontrar otra etiqueta.
         """
         idxs = self._find_line_indices(lines, "DOMICILIO")
-        if not idxs:
-            data["domicilio_lineas"] = self._parse_domicilio_pattern(lines, data)
+        noise_idx_flag = False
+        stop_tags = [
+            "CLAVE DE ELECTOR",
+            "ELECTOR",
+            "CLAVE",
+            "CURP",
+            "FECHA DE NACIMIENTO",
+            "SECCION",
+            "SECCIÓN",
+            "VIGENCIA",
+            "AÑO DE REGISTRO",
+        ]
+        if len(idxs) > 0 and idxs[0] >= (len(lines) - 3):
+                noise_idx_flag = True
+        if not idxs or noise_idx_flag:
+            data["domicilio_lineas"] = self._parse_domicilio_pattern(lines)
         else:
             idx = idxs[0]
             dom_lines = []
@@ -233,11 +319,20 @@ class INEParser:
                 if not line:
                     continue
                 # Parar cuando aparezcan otras etiquetas
-                if any(tag in line for tag in ["CLAVE DE ELECTOR", "CURP", "FECHA DE NACIMIENTO"]):
+                if any(tag in line for tag in stop_tags) or i>idx+3:
                     break
-                clean = re.sub(r"\s{2,}.*$", "", line).strip()
-                clean = re.sub(r"^[\-\.\·\•\_\|\s]+", "", clean).strip()
-                dom_lines.append(clean)
+                    # Limpiar ruido: dejar solo letras, números, comas y espacios
+                clean = line.upper()
+                clean = re.sub(r"[^A-ZÁÉÍÓÚÑ0-9, ]+", " ", clean)
+                clean = re.sub(r"\s+", " ", clean).strip()
+
+                # Eliminar tokens de 1 carácter (ruido tipo 'K')
+                tokens = clean.split()
+                tokens = [t for t in tokens if len(t) > 1 or "," in t]
+                clean = " ".join(tokens)
+
+                if clean:
+                    dom_lines.append(clean)
 
             data["domicilio_lineas"] = dom_lines
 
