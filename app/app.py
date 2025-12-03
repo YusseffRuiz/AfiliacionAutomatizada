@@ -1,4 +1,7 @@
 # app.py
+import os
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -12,7 +15,8 @@ import datetime
 # IMPORTA tu lógica existente
 from .image_processor import IDImageProcessor
 from .id_parser import INEParser
-from .helper import process_with_yolo_candidates  # donde tengas esta función
+from .helper import process_with_yolo_candidates, process_with_yolo_candidates_v2  # donde tengas esta función
+from .ocr_agent import SimpleOCRAgent
 
 
 # ----------------- Modelos Pydantic de respuesta -----------------
@@ -98,6 +102,12 @@ processor = IDImageProcessor(
     save_debug_images=False,
 )
 parser = INEParser()
+load_dotenv(os.path.expanduser("../tokens.env"))
+api_key = os.getenv("MISTRAL_API_KEY")
+if not api_key:
+    raise ValueError("Please set the MISTRAL_API_KEY environment variable.")
+
+agent = SimpleOCRAgent(api_key=api_key)
 
 
 # ----------------- Endpoint principal -----------------
@@ -147,7 +157,8 @@ async def parse_ine(
 
 
         # 4) Ejecutar pipeline con candidatos de YOLO + parser
-        result = process_with_yolo_candidates(processor=processor, parser=parser, ine_imagen=str(tmp_path), page=page)
+        result = process_with_yolo_candidates_v2(processor=processor, mistral_agent=agent, parser=parser, ine_imagen=str(tmp_path), page=page)
+        # result = process_with_yolo_candidates(processor=processor, parser=parser, ine_imagen=str(tmp_path), page=page) # Tesseract Development
 
         score = int(result.get("score", 0))
 
