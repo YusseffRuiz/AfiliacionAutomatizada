@@ -1,5 +1,3 @@
-# app.py
-import json
 import os
 
 from dotenv import load_dotenv
@@ -184,7 +182,7 @@ async def parse_ine(
         )
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
-        return JSONResponse(content=json.dumps(response))
+        return JSONResponse(content=response.model_dump())
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
