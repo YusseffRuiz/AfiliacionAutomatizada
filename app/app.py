@@ -183,7 +183,7 @@ async def parse_ine(
         )
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
-        return JSONResponse(content=response.dict())
+        return JSONResponse(content=response.model_dump_json())
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
