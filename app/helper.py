@@ -21,7 +21,7 @@ def score_parse_result(data_out: dict) -> int:
         score += 1
     return score
 
-def process_with_yolo_candidates(
+def process_with_yolo_candidates_tesseract(
     processor,
     parser,
     ine_imagen: str,
@@ -95,7 +95,7 @@ def process_with_yolo_candidates(
         "attempt": "yolo_candidates_failed",
     }
 
-def process_with_yolo_candidates_v2(
+def process_with_yolo_candidates_mistral(
     processor,
     mistral_agent,
     parser,
@@ -121,6 +121,61 @@ def process_with_yolo_candidates_v2(
                                                 alpha_contrast=1.8, beta_brightness=-21)
 
         texto = mistral_agent.process_local_image(crop)
+
+        data_full = parser.parse(texto)   # tu parser ya regresa data_out final
+
+        score = score_parse_result(data_full)
+        # print(f"[CANDIDATO {i}] score={score}, data_out={data_out}")
+
+        if score > best_score:
+            best_score = score
+            best_data = data_full
+
+        # Si ya estamos bastante bien, podemos parar
+        if score >= score_ok_threshold:
+            best_data["attempt"] = f"yolo_candidate_{i}"
+            best_data["score"] = score
+            return best_data
+
+    # Ninguno llegó al umbral, pero devolvemos el mejor que haya
+    if best_data is not None:
+        best_data["attempt"] = f"yolo_best_candidate"
+        best_data["score"] = best_score
+        return best_data
+
+    # En teoría no deberías llegar aquí, pero por seguridad:
+    return {
+        "error": "No se pudo parsear ningún recorte de YOLO",
+        "attempt": "yolo_candidates_failed",
+    }
+
+def process_with_yolo_candidates_paddle(
+    processor,
+    paddle_agent,
+    parser,
+    ine_imagen: str,
+    page: int = 0,
+    max_candidates: int = 3,
+    score_ok_threshold: int = 6,
+) -> dict:
+    # Desarrollo con agente MISTRAL
+    """
+    Prueba varios bounding boxes de YOLO (ordenados por confianza),
+    se queda con el que produzca mejor parse. Si alguno supera
+    cierto umbral de score, se detiene ahí.
+    """
+    best_data = None
+    best_score = -1
+
+    crops = processor.get_document_crops(ine_imagen, page=page, max_candidates=max_candidates)
+
+
+    for i, crop in enumerate(crops):
+        crop = processor.public_preprocess_for_ocr(crop, scale=3.0, h = 18, searchwindowssize=21, clahe_clip_limit=3.6,
+                                                alpha_contrast=1.8, beta_brightness=-21)
+
+        texto = paddle_agent.run(crop)
+        # print(texto)
 
         data_full = parser.parse(texto)   # tu parser ya regresa data_out final
 
