@@ -1,11 +1,10 @@
 import base64
 import json
 
-import cv2
-import numpy as np
-from mistralai import Mistral, ImageURLChunk
 from paddleocr import PaddleOCR
-
+import numpy as np
+import cv2
+from mistralai import Mistral, ImageURLChunk
 
 class PaddleOCREngine:
     def __init__(self, lang="es"):
@@ -54,7 +53,7 @@ class PaddleOCREngine:
         return "\n".join(lines)
 
 
-class SimpleOCRAgent:
+class MistralOCRAgent:
     def __init__(self, api_key):
         self.client = Mistral(api_key=api_key)
 
