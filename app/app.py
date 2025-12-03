@@ -102,7 +102,9 @@ processor = IDImageProcessor(
     save_debug_images=False,
 )
 parser = INEParser()
-load_dotenv(os.path.expanduser("../tokens.env"))
+BASE_DIR = Path(__file__).resolve().parent.parent   # sube dos carpetas
+ENV_PATH = BASE_DIR / "tokens.env"
+load_dotenv(ENV_PATH)
 api_key = os.getenv("MISTRAL_API_KEY")
 if not api_key:
     raise ValueError("Please set the MISTRAL_API_KEY environment variable.")
