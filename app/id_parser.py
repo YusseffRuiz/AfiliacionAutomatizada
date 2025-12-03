@@ -172,11 +172,67 @@ class INEParser:
         line = re.sub(r"\s+", " ", line)
         return line.strip()
 
+
     def _parse_nombre(self, lines: List[str], data: Dict):
         """
         Busca la sección NOMBRE y toma las 2–3 líneas siguientes
         como apellidos y nombres, pero limpiando ruido fuerte.
+        texto en la MISMA línea tomando 1er token como apellido y sucesivamente
         """
+
+        def _split_single_line_name(name_line: str):
+            """
+            Recibe algo como 'DE JESUS GARCIA GILBERTO' y devuelve
+            (apellido_paterno, apellido_materno, nombres).
+
+            Heurística:
+            - Cada apellido puede tener hasta 2 tokens.
+            - Si empieza con partícula (DE, DEL, LA, LOS, LAS, Y),
+              se toma partícula + siguiente token como apellido.
+            """
+            tokens = name_line.split()
+            if not tokens:
+                return None, None, None
+
+            PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y"}
+
+            def build_surname(start_idx: int):
+                """
+                Construye un apellido a partir de tokens[start_idx],
+                devolviendo (apellido_str, next_index).
+                Máximo 2 tokens por apellido.
+                """
+                n = len(tokens)
+                if start_idx >= n:
+                    return None, start_idx
+
+                t0 = tokens[start_idx]
+
+                # Si empieza con partícula y hay al menos 2 tokens disponibles: tomar 2
+                if t0 in PARTICULAS and start_idx + 1 < n:
+                    apellido = f"{tokens[start_idx]} {tokens[start_idx + 1]}"
+                    return apellido, start_idx + 2
+
+                # Si no es partícula o no hay espacio para 2 tokens: tomar solo uno
+                return t0, start_idx + 1
+
+            # Apellido paterno
+            ap_p, idx = build_surname(0)
+
+            # Apellido materno
+            ap_m, idx = build_surname(idx)
+
+            # Nombres = lo que queda
+            nombres = " ".join(tokens[idx:]) if idx < len(tokens) else None
+
+            # Normalizar vacíos
+            ap_p = ap_p if ap_p else None
+            ap_m = ap_m if ap_m else None
+            nombres = nombres if nombres else None
+
+            return ap_p, ap_m, nombres
+
+
         idxs = self._find_line_indices(lines, "NOMBRE")
         if not idxs:
             idx = 0 # Suele ser la primera linea leida
@@ -184,11 +240,18 @@ class INEParser:
             idx = idxs[0]
         raw_name_lines = []
 
+        line_nombre = lines[idx].strip()
+        m_inline = re.search(r"NOMBRE\s+(.+)$", line_nombre)
+        if m_inline:
+            inline_text = self._letters_and_spaces(m_inline.group(1).strip())
+            if inline_text:
+                raw_name_lines.append(inline_text)
+
         # Suele venir en las 3 líneas siguientes
         for i in range(idx + 1, min(idx + 4, len(lines))):
             line = lines[i].strip()
             # Parar cuando aparezca otra etiqueta fuerte
-            if any(tag in line for tag in ["DOMICILIO", "CLAVE DE ELECTOR", "CURP"]):
+            if any(tag in line for tag in ["DOMICILIO", "CLAVE DE ELECTOR", "CURP", "SEXO"]):
                 break
             if line:
                 raw_name_lines.append(line)
@@ -208,6 +271,18 @@ class INEParser:
 
         # Heurística: [0] paterno, [1] materno, [2+] nombres
         # Y nos quedamos con primeras palabras para quitar ruido residual
+
+        # si solo hay UNA línea (caso Mistral) la dividimos en tokens
+        if len(clean_lines) == 1:
+            ap_p, ap_m, nombres = _split_single_line_name(clean_lines[0])
+            if ap_p:
+                data["apellido_paterno"] = ap_p
+            if ap_m:
+                data["apellido_materno"] = ap_m
+            if nombres:
+                data["nombres"] = nombres
+            return
+
         if len(clean_lines) >= 1:
             tokens0 = clean_lines[0].split()
             tokens_validos = [t for t in tokens0 if (len(t) > 2 or t == 'DE' or t == "Y")]  # Limitamos ruido verificando si los apellidos tienen mas de 2 letras
@@ -314,6 +389,19 @@ class INEParser:
         else:
             idx = idxs[0]
             dom_lines = []
+
+            # 1) Contenido en la misma línea que 'DOMICILIO'
+            line_dom = lines[idx].strip()
+            m_inline = re.search(r"DOMICILIO\s+(.+)$", line_dom)
+
+            if m_inline:
+                first_dom = m_inline.group(1).strip()
+                # limpiar basura visual
+                first_dom = re.sub(r"\s{2,}.*$", "", first_dom).strip()
+                first_dom = re.sub(r"^[\-\.\·\•\_\|\s]+", "", first_dom).strip()
+                if first_dom:
+                    dom_lines.append(first_dom)
+
             for i in range(idx + 1, len(lines)):
                 line = lines[i].strip()
                 if not line:
