@@ -19,7 +19,7 @@ class PaddleOCREngine:
                              )  # We dont need any of those.
         self.max_size = 4000 # Max size to handle images for Paddle
 
-    def run(self, img: np.ndarray) -> str:
+    def process_local_image(self, img: np.ndarray) -> str:
         """
         Recibe una imagen como np.ndarray (BGR o RGB)
         y devuelve texto plano concatenado.
@@ -60,7 +60,7 @@ class PaddleOCREngine:
         return "\n".join(lines)
 
 
-class SimpleOCRAgent:
+class MistralOCRAgent:
     def __init__(self, api_key):
         self.client = Mistral(api_key=api_key)
 

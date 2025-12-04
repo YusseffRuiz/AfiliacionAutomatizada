@@ -14,8 +14,8 @@ import datetime
 # IMPORTA tu lógica existente
 from .image_processor import IDImageProcessor
 from .id_parser import INEParser
-from .helper import process_with_yolo_candidates_tesseract, process_with_yolo_candidates_mistral, process_with_yolo_candidates_paddle  # donde tengas esta función
-from .ocr_agent import SimpleOCRAgent, PaddleOCREngine
+from .helper import process_with_yolo_v2  # donde tengas esta función
+from .ocr_agent import MistralOCRAgent, PaddleOCREngine
 
 
 # ----------------- Modelos Pydantic de respuesta -----------------
@@ -84,26 +84,6 @@ def build_warnings(result: dict) -> List[str]:
         warnings.append("fecha_nacimiento_no_detectada")
     return warnings
 
-def ine_pipeline(processor, parser, ine_imagen, page=0, ocr_engine="paddle"):
-    if ocr_engine == "paddle":
-        agent = PaddleOCREngine(lang="es")
-
-        result = process_with_yolo_candidates_paddle(processor=processor, paddle_agent=agent, parser=parser,
-                                                     ine_imagen=ine_imagen)
-        return result
-    elif ocr_engine == "tesseract":
-        result = process_with_yolo_candidates_tesseract(processor=processor, parser=parser, ine_imagen=ine_imagen, page=page)
-        return result
-    elif ocr_engine == "mistral":
-        if not api_key:
-            raise ValueError("Please set the MISTRAL_API_KEY environment variable.")
-        agent = SimpleOCRAgent(api_key=api_key)
-        result = process_with_yolo_candidates_mistral(processor=processor, mistral_agent=agent, parser=parser,
-                                                 ine_imagen=str(ine_imagen), page=page)
-        return result
-    else:
-        raise ValueError("OCR engine no reconocido")
-
 
 # ----------------- Inicializar FastAPI y tus objetos -----------------
 
@@ -125,7 +105,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent   # sube dos carpetas
 ENV_PATH = BASE_DIR / "tokens.env"
 load_dotenv(ENV_PATH)
 api_key = os.getenv("MISTRAL_API_KEY")
-
+agent_paddle = PaddleOCREngine(lang="es")
+if not api_key:
+    raise ValueError("Please set the MISTRAL_API_KEY environment variable.")
+agent_mistral = MistralOCRAgent(api_key=api_key)
 
 
 # ----------------- Endpoint principal -----------------
@@ -173,10 +156,15 @@ async def parse_ine(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp_path = Path(tmp.name)
             shutil.copyfileobj(file.file, tmp)
-
+        if ocr_engine == "paddle": ## If added an uknown agent, use last resort ocr enginer = Tesseract
+            agent = agent_paddle
+        elif ocr_engine == "mistral":
+            agent = agent_mistral
+        else:
+            agent = None
 
         # 4) Ejecutar pipeline con candidatos de YOLO + parser
-        result = ine_pipeline(processor=processor, parser=parser, ine_imagen=tmp_path, page=page, ocr_engine=ocr_engine)
+        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, page=page, ine_imagen=str(tmp_path))
 
         score = int(result.get("score", 0))
 
