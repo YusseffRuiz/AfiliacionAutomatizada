@@ -163,7 +163,7 @@ async def parse_ine(
         else:
             agent = None
 
-        # 4) Ejecutar pipeline con candidatos de YOLO + parser
+        # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, page=page, ine_imagen=str(tmp_path))
 
         score = int(result.get("score", 0))
