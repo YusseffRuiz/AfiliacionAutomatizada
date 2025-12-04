@@ -10,7 +10,13 @@ from paddleocr import PaddleOCR
 class PaddleOCREngine:
     def __init__(self, lang="es"):
         # Paddle usa "es" como español + multipropósito
-        self.ocr = PaddleOCR()
+        self.ocr = PaddleOCR(use_doc_orientation_classify=False,
+                             # Disables document orientation classification model via this parameter
+                             use_doc_unwarping=False,  # Disables text image rectification model via this parameter
+                             use_textline_orientation=False,
+                             # Disables text line orientation classification model via this parameter
+                             lang=lang
+                             )  # We dont need any of those.
         self.max_size = 4000 # Max size to handle images for Paddle
 
     def run(self, img: np.ndarray) -> str:
