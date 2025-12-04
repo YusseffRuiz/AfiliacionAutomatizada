@@ -248,13 +248,20 @@ class INEParser:
                 raw_name_lines.append(inline_text)
 
         # Suele venir en las 3 líneas siguientes
-        for i in range(idx + 1, min(idx + 4, len(lines))):
+        for i in range(idx + 1, min(idx + 7, len(lines))):
             line = lines[i].strip()
+            if not line:
+                continue
+            line = line.upper()
             # Parar cuando aparezca otra etiqueta fuerte
-            if any(tag in line for tag in ["DOMICILIO", "CLAVE DE ELECTOR", "CURP", "SEXO"]):
+            if any(tag in line for tag in ["DOMICILIO", "CLAVE DE ELECTOR", "CURP"]):
                 break
-            if line:
-                raw_name_lines.append(line)
+            if line.startswith("SEX"):
+                continue
+            if "FECHA" in line or "NACIM" in line:
+                continue
+
+            raw_name_lines.append(line)
 
         if not raw_name_lines:
             return
@@ -377,8 +384,8 @@ class INEParser:
             "CLAVE",
             "CURP",
             "FECHA DE NACIMIENTO",
-            "SECCION",
-            "SECCIÓN",
+            # "SECCION",
+            # "SECCIÓN",
             "VIGENCIA",
             "AÑO DE REGISTRO",
         ]
