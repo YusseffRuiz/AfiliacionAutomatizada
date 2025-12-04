@@ -60,7 +60,7 @@ class PaddleOCREngine:
         return "\n".join(lines)
 
 
-class SimpleOCRAgent:
+class MistralOCRAgent:
     def __init__(self, api_key):
         self.client = Mistral(api_key=api_key)
 
