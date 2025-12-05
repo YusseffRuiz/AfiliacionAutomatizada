@@ -1,5 +1,6 @@
 import re
 from typing import Dict, Optional, List
+from curp import CURP, CURPValueError
 
 
 class INEParser:
@@ -127,6 +128,7 @@ class INEParser:
             "domicilio": data["domicilio"],
             "clave_elector": data["clave_elector"],
             "curp": data["curp"],
+            "validated_curp": self._verify_curp(data["curp"]),
             "fecha_nacimiento": data["fecha_nacimiento"],
             "vigencia": data["vigencia"],
         }
@@ -554,3 +556,11 @@ class INEParser:
         if c in ("H", "M"):
             return c
         return None
+
+    @staticmethod
+    def _verify_curp(value:str) -> bool:
+        try:
+            c = CURP(value)
+            return True
+        except CURPValueError:
+            return False
