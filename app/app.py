@@ -17,8 +17,7 @@ from .image_processor import IDImageProcessor
 from .id_parser import INEParser
 from .helper import process_with_yolo_v2  # donde tengas esta función
 from .ocr_agent import MistralOCRAgent, PaddleOCREngine
-import utils.health as health
-
+from .utils import health
 
 # ----------------- Modelos Pydantic de respuesta -----------------
 class ErrorContext(BaseModel):
