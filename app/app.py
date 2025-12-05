@@ -1,10 +1,11 @@
+import logging
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pathlib import Path
 import tempfile
 import shutil
@@ -16,10 +17,40 @@ from .image_processor import IDImageProcessor
 from .id_parser import INEParser
 from .helper import process_with_yolo_v2  # donde tengas esta función
 from .ocr_agent import MistralOCRAgent, PaddleOCREngine
+import utils.health as health
 
 
 # ----------------- Modelos Pydantic de respuesta -----------------
+class ErrorContext(BaseModel):
+    ocr_engine: Optional[str] = None
+    attempt: Optional[str] = None
+    filename: Optional[str] = None
+    stage: Optional[str] = None
+    extra: Optional[Dict[str, Any]] = None
 
+
+class ErrorPayload(BaseModel):
+    type: str                  # p.ej. "validation_error", "ocr_error", "model_error", image_error
+    message: str               # mensaje entendible
+    detail: Optional[str] = None  # detalle técnico más específico
+    context: Optional[ErrorContext] = None
+
+class INEApiError(Exception):
+    def __init__(
+        self,
+        *,
+        type: str,
+        message: str,
+        detail: Optional[str] = None,
+        context: Optional[dict] = None,
+        status_code: int = 400,
+    ):
+        self.type = type
+        self.message = message
+        self.detail = detail
+        self.context = context or {}
+        self.status_code = status_code
+        super().__init__(message)
 
 class INEData(BaseModel):
     apellido_paterno: Optional[str] = None
@@ -112,11 +143,81 @@ if not api_key:
 agent_mistral = MistralOCRAgent(api_key=api_key)
 
 
+# -----------------Error Handling ---------------------
+logger = logging.getLogger("ine_api")
+
+@app.exception_handler(INEApiError)
+async def ine_api_error_handler(request: Request, exc: INEApiError):
+    payload = ErrorPayload(
+        type=exc.type,
+        message=exc.message,
+        detail=exc.detail,
+        context=ErrorContext(**exc.context) if exc.context else None,
+    )
+
+    # Log estructurado
+    logger.error(
+        "INEApiError",
+        extra={
+            "error_type": exc.type,
+            "message": exc.message,
+            "detail": exc.detail,
+            "context": exc.context,
+            "path": str(request.url),
+        },
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": payload.dict()},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_error_handler(request: Request, exc: Exception):
+    # Aquí atrapamos lo que no controlamos
+    logger.exception("Unhandled exception in INE API", extra={"path": str(request.url)})
+
+    payload = ErrorPayload(
+        type="internal_error",
+        message="Ocurrió un error inesperado procesando la credencial.",
+        detail=str(exc),
+        context=ErrorContext(
+            extra={"path": str(request.url)}
+        ),
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={"error": payload.dict()},
+    )
+
 # ----------------- Endpoint principal -----------------
 
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+@app.get("/readyz")
+async def readyz():
+    components = {
+        "yolo": health.check_yolo(processor),
+        "paddle_ocr": health.check_paddle(agent_paddle),
+        "mistral_ocr": health.check_mistral(agent_mistral),
+        "parser": health.check_parser(parser),
+    }
+
+    all_ok = all(c["ok"] for c in components.values())
+
+    status = "ok" if all_ok else "degraded"
+
+    payload = {
+        "status": status,
+        "components": components,
+    }
+
+    status_code = 200 if all_ok else 503
+    return JSONResponse(content=payload, status_code=status_code)
 
 @app.post(
     "/api/ine/parse",
@@ -156,6 +257,7 @@ async def parse_ine(
 
     try:
         # 2) Guardar archivo temporalmente
+
         suffix = Path(file.filename).suffix if file.filename else ""
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp_path = Path(tmp.name)
@@ -167,10 +269,33 @@ async def parse_ine(
         else:
             agent = None
 
+        # Validacion de imagen
+        valid_img = health.validate_image_quality(processor.public_load_image(str(tmp_path), page=page), filename=file.filename)
+        if not valid_img:
+            raise INEApiError(
+                type=valid_img["type"],
+                message=valid_img["message"],
+                detail=valid_img["detail"],
+                context=valid_img["context"],
+                status_code=valid_img["status_code"],
+            )
+
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, page=page, ine_imagen=str(tmp_path))
 
         score = int(result.get("score", 0))
+        if score == 0:
+            raise INEApiError(
+                type="ocr_error",
+                message="No se pudo extraer texto legible de la credencial.",
+                detail="El motor OCR devolvió texto vacío o solo ruido.",
+                context={
+                    "ocr_engine": ocr_engine,
+                    "filename": file.filename,
+                    "stage": "ocr",
+                },
+                status_code=422,
+            )
 
         # 5) Mapear a lo que necesita el CRM
 
