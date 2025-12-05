@@ -114,6 +114,9 @@ agent_mistral = MistralOCRAgent(api_key=api_key)
 
 # ----------------- Endpoint principal -----------------
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
 
 @app.post(
     "/api/ine/parse",
