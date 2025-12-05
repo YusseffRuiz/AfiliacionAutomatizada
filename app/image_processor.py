@@ -335,6 +335,9 @@ class IDImageProcessor:
             y2 = min(h, h - y2)
             return bgr[y1:y2, x1:x2]
 
+    def public_load_image(self, path: str, page: int=0):
+        return self._load_bgr_from_path(path, page=page)
+
     # ---------- Métodos internos ----------
     def _load_bgr_from_path(self, path: str, page: int = 0) -> np.ndarray:
         """
