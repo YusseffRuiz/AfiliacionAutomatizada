@@ -28,6 +28,7 @@ class INEData(BaseModel):
     direccion: Optional[str] = None  # viene de "domicilio"
     curp: Optional[str] = None  # Validacion con api de curp
     fecha_nacimiento: Optional[str] = None  # formato ISO: YYYY-MM-DD // Por verse
+    curp_validada : Optional[bool] = None  # validacion de curp con gob
 
 
 class INEMeta(BaseModel):
@@ -177,6 +178,7 @@ async def parse_ine(
             direccion=result.get("domicilio"),
             curp=result.get("curp"),
             fecha_nacimiento=normalize_fecha_ddmmyyyy_to_iso(result.get("fecha_nacimiento")),
+            curp_validada=result.get("validated_curp"),
         )
 
         meta = INEMeta(
