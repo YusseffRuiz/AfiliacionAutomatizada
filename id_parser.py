@@ -182,6 +182,8 @@ class INEParser:
         texto en la MISMA línea tomando 1er token como apellido y sucesivamente
         """
 
+        PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y"}
+
         def _split_single_line_name(name_line: str):
             """
             Recibe algo como 'DE JESUS GARCIA GILBERTO' y devuelve
@@ -195,8 +197,6 @@ class INEParser:
             tokens = name_line.split()
             if not tokens:
                 return None, None, None
-
-            PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y"}
 
             def build_surname(start_idx: int):
                 """
@@ -277,6 +277,21 @@ class INEParser:
 
         if not clean_lines:
             return
+
+        # pre-merge de lineas para evitar dejar un apellido como DE, Y, LOS, etc.
+        merged_lines: List[str] = []
+        i = 0
+        while i < len(clean_lines):
+            tokens = clean_lines[i].split()
+            if len(tokens) == 1 and tokens[0] in PARTICULAS and i + 1 < len(clean_lines):
+                # unir esta línea con la siguiente → 'DE' + 'JESUS' → 'DE JESUS'
+                merged_lines.append(f"{tokens[0]} {clean_lines[i + 1].strip()}")
+                i += 2
+            else:
+                merged_lines.append(clean_lines[i])
+                i += 1
+
+        clean_lines = merged_lines
 
         # Heurística: [0] paterno, [1] materno, [2+] nombres
         # Y nos quedamos con primeras palabras para quitar ruido residual
