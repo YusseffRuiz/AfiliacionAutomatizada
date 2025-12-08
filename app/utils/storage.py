@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from pdf2image import convert_from_bytes
+from pdf2image import convert_from_bytes, convert_from_path
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # raíz del proyecto
 DEFAULT_STORAGE_DIR = BASE_DIR / "storage"
@@ -66,7 +66,7 @@ def _compress_to_max_size(bgr: np.ndarray, max_bytes: int = MAX_BYTES) -> bytes:
 def save_valid_image(
     request_id: str,
     filename: str,
-    image: bytes,
+    image: str,
     out_dir: str = "storage",
     max_bytes: int = MAX_BYTES,
 ) -> str:
@@ -83,10 +83,11 @@ def save_valid_image(
     is_pdf = ext == ".pdf"
 
     # 1) Convertir a BGR (imagen) según sea PDF o imagen normal
+
     if is_pdf:
         # Rasterizar primera página del PDF
         try:
-            pages = convert_from_bytes(image, dpi=200, first_page=1, last_page=1)
+            pages = convert_from_path(image, dpi=200)
         except Exception as e:
             raise ValueError(f"No se pudo convertir el PDF a imagen: {e}")
 
@@ -97,6 +98,7 @@ def save_valid_image(
         bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         base_stem = Path(filename).stem or "pdf"
     else:
+        image = Path(image).read_bytes()
         # Imagen (jpg/png/etc.)
         npimg = np.frombuffer(image, dtype=np.uint8)
         bgr = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
