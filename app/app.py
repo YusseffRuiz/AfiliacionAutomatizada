@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
@@ -17,7 +18,7 @@ from .image_processor import IDImageProcessor
 from .id_parser import INEParser
 from .helper import process_with_yolo_v2  # donde tengas esta función
 from .ocr_agent import MistralOCRAgent, PaddleOCREngine
-from .utils import health
+from .utils import health, storage
 
 # ----------------- Modelos Pydantic de respuesta -----------------
 class ErrorContext(BaseModel):
@@ -237,6 +238,7 @@ async def parse_ine(
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
+    request_id = str(uuid.uuid4().hex)[:4]
 
     # 1) Validar tipo de archivo
     allowed_types = {
@@ -268,8 +270,10 @@ async def parse_ine(
         else:
             agent = None
 
-        # Validacion de imagen
-        valid_img = health.validate_image_quality(processor.public_load_image(str(tmp_path), page=page), filename=file.filename)
+        # 3) Validacion de imagen
+        img_bgr = processor.public_load_image(str(tmp_path), page=page)
+        valid_img = health.validate_image_quality(img_bgr, filename=file.filename)
+
         if not valid_img:
             raise INEApiError(
                 type=valid_img["type"],
@@ -280,7 +284,7 @@ async def parse_ine(
             )
 
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
-        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, page=page, ine_imagen=str(tmp_path))
+        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=img_bgr)
 
         score = int(result.get("score", 0))
         if score == 0:
@@ -294,6 +298,25 @@ async def parse_ine(
                     "stage": "ocr",
                 },
                 status_code=422,
+            )
+
+        ## 4.5) Guardar imagen en disco para futuros entrenamientos.
+        try:
+            raw_bytes = Path(tmp_path).read_bytes()
+            storage.save_valid_image(
+                request_id=request_id,
+                original_filename=file.filename or "upload",
+                image=raw_bytes,
+            )
+        except Exception as e:
+            # No queremos que falle toda la API solo porque no se pudo guardar
+            logger.warning(
+                "No se pudo guardar imagen válida",
+                extra={
+                    "request_id": request_id,
+                    "filename": file.filename,
+                    "error": str(e),
+                },
             )
 
         # 5) Mapear a lo que necesita el CRM

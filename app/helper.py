@@ -25,8 +25,7 @@ def score_parse_result(data_out: dict) -> int:
 def process_with_yolo_v2(processor,
     parser,
     agent,
-    ine_imagen: str = " ",
-    page: int = 0,
+    ine_imagen,
     max_candidates: int = 3,
     score_ok_threshold: int = 6,
 ) -> dict:
@@ -39,7 +38,7 @@ def process_with_yolo_v2(processor,
     best_data = None
     best_score = -1
 
-    crops = processor.get_document_crops(ine_imagen, page=page, max_candidates=max_candidates)
+    crops = processor.get_document_crops(ine_imagen, max_candidates=max_candidates)
 
     for i, crop in enumerate(crops):
         crop = processor.public_preprocess_for_ocr(crop, scale=2.5, h=18, searchwindowssize=21, clahe_clip_limit=3.4,
