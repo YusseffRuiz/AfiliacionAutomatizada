@@ -239,7 +239,7 @@ async def parse_ine(
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
-    request_id = str(uuid.uuid4().hex)[:4]
+    request_id = str(uuid.uuid4().hex)[:8]
 
     # 1) Validar tipo de archivo
     allowed_types = {
