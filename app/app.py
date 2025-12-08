@@ -306,7 +306,7 @@ async def parse_ine(
             raw_bytes = Path(tmp_path).read_bytes()
             storage.save_valid_image(
                 request_id=request_id,
-                original_filename=file.filename or "upload",
+                filename=file.filename or "upload",
                 image=raw_bytes,
             )
         except Exception as e:
