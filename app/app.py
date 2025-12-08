@@ -303,11 +303,10 @@ async def parse_ine(
 
         ## 4.5) Guardar imagen en disco para futuros entrenamientos.
         try:
-            raw_bytes = Path(tmp_path).read_bytes()
             storage.save_valid_image(
                 request_id=request_id,
                 filename=file.filename or "upload",
-                image=raw_bytes,
+                image=str(tmp_path),
             )
         except Exception as e:
             # No queremos que falle toda la API solo porque no se pudo guardar
