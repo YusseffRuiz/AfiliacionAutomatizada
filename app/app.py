@@ -63,6 +63,7 @@ class INEData(BaseModel):
 
 
 class INEMeta(BaseModel):
+    request_id: Optional[str] = None
     score: int
     parser_version: str
     processing_ms: int
@@ -332,6 +333,7 @@ async def parse_ine(
         )
 
         meta = INEMeta(
+            request_id=request_id,
             score=score,
             parser_version="ine-mvp-v1",
             processing_ms=int((time.time() - start) * 1000),
