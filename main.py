@@ -201,10 +201,10 @@ def ine_pipeline(processor, parser, ine_imagen, agent=None, page=0):
 
 
 if __name__ == "__main__":
-    ine_imagen = "imagenes_prueba/INE_13.jpg"
+    # ine_imagen = "imagenes_prueba/INE_13.jpg"
     # ine_imagen = ("imagenes_prueba/INE_7.jpeg")
     # ine_imagen = "imagenes_prueba/INEGloria.pdf"
-    # ine_imagen = "imagenes_prueba/IneAdan.pdf"
+    ine_imagen = "imagenes_prueba/IneAdan.pdf"
 
     ocr_engine = "paddle"
     # ocr_engine = "mistral"
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     saved_path = storage.save_valid_image(
         image=contents,
         request_id=request_id,
-        original_filename=ine_imagen,
+        filename=ine_imagen,
     )
     print("Image saved in {}".format(saved_path))
 
