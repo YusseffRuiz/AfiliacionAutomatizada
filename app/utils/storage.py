@@ -95,7 +95,6 @@ def save_valid_image(
 
         if not pages:
             raise ValueError("El PDF no contiene páginas válidas.")
-        print("Convert Success")
         pil_img = pages[0].convert("RGB")
         bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         base_stem = Path(filename).stem or "pdf"
