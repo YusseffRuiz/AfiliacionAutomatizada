@@ -79,6 +79,8 @@ def save_valid_image(
     Devuelve el path final guardado.
     """
 
+    os.makedirs(out_dir, exist_ok=True)
+
     ext = Path(filename).suffix.lower()
     is_pdf = ext == ".pdf"
 
@@ -108,9 +110,10 @@ def save_valid_image(
             raise ValueError("No se pudo decodificar la imagen enviada.")
         base_stem = Path(filename).stem or "img"
 
+    print("Comprimiendo")
     # 2) Comprimir asegurando tamaño máximo
     final_bytes = _compress_to_max_size(bgr, max_bytes=max_bytes)
-
+    print("Comprimido")
     # 3) Nombre final: siempre .jpg
     out_name = f"{request_id}_{base_stem}.jpg"
     out_path = Path(out_dir) / out_name
