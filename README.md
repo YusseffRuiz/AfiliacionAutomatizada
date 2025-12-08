@@ -141,6 +141,14 @@ Ejemplo con curl:
       "vigencia": "2023-2033"
     }
 
+## Errores de la API
+    200 → todo OK, datos útiles.
+    
+    400 → problema con la imagen (corrupta, mal subida, formato no soportado).
+    
+    422 → OCR/parseo no logró campos mínimos (pero la imagen era válida).
+    
+    500 → error interno inesperado.
 
 ## 🧩 Roadmap
 

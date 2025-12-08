@@ -1,6 +1,7 @@
 import os
-from pathlib import Path
+import uuid
 
+import utils.storage as storage
 from dotenv import load_dotenv
 
 from image_processor import IDImageProcessor
@@ -200,13 +201,15 @@ def ine_pipeline(processor, parser, ine_imagen, agent=None, page=0):
 
 
 if __name__ == "__main__":
-    ine_imagen = "imagenes_prueba/INE_13.jpg"
-    # ine_imagen = ("imagenes_prueba/INE_7.jpeg")
+    # ine_imagen = "imagenes_prueba/INE_13.jpg"
+    ine_imagen = ("imagenes_prueba/INE_7.jpeg")
     # ine_imagen = "imagenes_prueba/INEGloria.pdf"
     # ine_imagen = "imagenes_prueba/IneAdan.pdf"
 
-    # ocr_engine = "paddle"
-    ocr_engine = "mistral"
+    ocr_engine = "paddle"
+    # ocr_engine = "mistral"
+
+    request_id = str(uuid.uuid4())[:4]
 
     processor = IDImageProcessor(
         yolo_model_path=YOLO_PATH,
@@ -231,7 +234,17 @@ if __name__ == "__main__":
     else:
         agent = None
 
+    # Cargar bytes del archivo original
+    with open(ine_imagen, "rb") as f:
+        contents = f.read()
+
     print(ine_pipeline(processor=processor, parser=parser, ine_imagen=ine_imagen, agent=agent, page=0))
 
+    saved_path = storage.save_valid_image(
+        image=contents,
+        request_id=request_id,
+        original_filename=ine_imagen,
+    )
+    print("Image saved in {}".format(saved_path))
 
 

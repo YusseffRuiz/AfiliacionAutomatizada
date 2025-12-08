@@ -145,6 +145,9 @@ class IDImageProcessor:
 
         return preprocessed
 
+    def public_load_image(self, path: str, page: int=0):
+        return self._load_bgr_from_path(path, page=page)
+
     def public_preprocess_for_ocr(self,bgr: np.ndarray=None, path: str=None, page: int=0, scale: float=3.0, h = 28,
                                   searchwindowssize=21, clahe_clip_limit=3.6, alpha_contrast=1.9,
                                   beta_brightness=-25) -> np.ndarray:

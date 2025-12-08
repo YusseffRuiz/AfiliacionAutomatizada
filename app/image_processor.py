@@ -37,12 +37,11 @@ class IDImageProcessor:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------- API pública ----------
-    def get_document_crops(self, path: str, page: int = 0, max_candidates: int = 3) -> list[np.ndarray]:
+    def get_document_crops(self, bgr, max_candidates: int = 3) -> list[np.ndarray]:
         """
         Devuelve una lista de recortes (crops) de los bounding boxes
         detectados por YOLO, ordenados por confianza descendente.
         """
-        bgr = self._load_bgr_from_path(path=path, page=page)
 
         results = self.model(bgr, conf=self.conf_threshold, verbose=False)
 
