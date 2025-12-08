@@ -78,6 +78,7 @@ def save_valid_image(
 
     Devuelve el path final guardado.
     """
+    os.makedirs(out_dir, exist_ok=True)
 
     ext = Path(filename).suffix.lower()
     is_pdf = ext == ".pdf"

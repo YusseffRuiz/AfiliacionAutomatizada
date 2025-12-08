@@ -85,7 +85,6 @@ def save_valid_image(
     is_pdf = ext == ".pdf"
 
     # 1) Convertir a BGR (imagen) según sea PDF o imagen normal
-    print(is_pdf)
 
     if is_pdf:
         # Rasterizar primera página del PDF
@@ -96,24 +95,20 @@ def save_valid_image(
 
         if not pages:
             raise ValueError("El PDF no contiene páginas válidas.")
-        print("Convert Success")
         pil_img = pages[0].convert("RGB")
         bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         base_stem = Path(filename).stem or "pdf"
     else:
         image = Path(image).read_bytes()
         # Imagen (jpg/png/etc.)
-        print("Convert Success")
         npimg = np.frombuffer(image, dtype=np.uint8)
         bgr = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
         if bgr is None:
             raise ValueError("No se pudo decodificar la imagen enviada.")
         base_stem = Path(filename).stem or "img"
 
-    print("Comprimiendo")
     # 2) Comprimir asegurando tamaño máximo
     final_bytes = _compress_to_max_size(bgr, max_bytes=max_bytes)
-    print("Comprimido")
     # 3) Nombre final: siempre .jpg
     out_name = f"{request_id}_{base_stem}.jpg"
     out_path = Path(out_dir) / out_name
