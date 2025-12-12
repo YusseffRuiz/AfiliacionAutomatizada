@@ -57,9 +57,13 @@ class INEData(BaseModel):
     apellido_materno: Optional[str] = None
     nombres: Optional[str] = None
     direccion: Optional[str] = None  # viene de "domicilio"
+    codigo_postal: Optional[str] = None
     curp: Optional[str] = None  # Validacion con api de curp
+    clave_elector: Optional[str] = None
     fecha_nacimiento: Optional[str] = None  # formato ISO: YYYY-MM-DD // Por verse
     curp_validada : Optional[bool] = None  # validacion de curp con gob
+    vigencia: Optional[str] = None
+    sector: Optional[str] = None
 
 
 class INEMeta(BaseModel):
@@ -326,9 +330,13 @@ async def parse_ine(
             apellido_materno=result.get("apellido_materno"),
             nombres=result.get("nombres"),
             direccion=result.get("domicilio"),
+            codigo_postal=result.get("codigo_postal"),
             curp=result.get("curp"),
             fecha_nacimiento=normalize_fecha_ddmmyyyy_to_iso(result.get("fecha_nacimiento")),
             curp_validada=result.get("validated_curp"),
+            clave_elector=result.get("clave_elector"),
+            sector=result.get("sector"),
+            vigencia=result.get("vigencia")
         )
 
         meta = INEMeta(
