@@ -1,6 +1,5 @@
 import base64
 import json
-
 from paddleocr import PaddleOCR
 import numpy as np
 import cv2
