@@ -333,6 +333,7 @@ async def parse_ine(
             apellido_paterno=result.get("apellido_paterno"),
             apellido_materno=result.get("apellido_materno"),
             nombres=result.get("nombres"),
+            sexo=result.get("sexo"),
             direccion=result.get("domicilio"),
             codigo_postal=result.get("codigo_postal"),
             curp=result.get("curp"),
