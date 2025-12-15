@@ -57,9 +57,13 @@ class INEData(BaseModel):
     apellido_materno: Optional[str] = None
     nombres: Optional[str] = None
     direccion: Optional[str] = None  # viene de "domicilio"
+    codigo_postal: Optional[str] = None
     curp: Optional[str] = None  # Validacion con api de curp
+    clave_elector: Optional[str] = None
     fecha_nacimiento: Optional[str] = None  # formato ISO: YYYY-MM-DD // Por verse
     curp_validada : Optional[bool] = None  # validacion de curp con gob
+    vigencia: Optional[str] = None
+    seccion: Optional[str] = None
 
 
 class INEMeta(BaseModel):
@@ -232,6 +236,7 @@ async def readyz():
 )
 async def parse_ine(
     file: UploadFile = File(...),
+    card_id: Optional[str] = "1",
     source: Optional[str] = Form(None),
     return_debug: bool = Form(False),
     page: int = Form(0),
@@ -239,7 +244,7 @@ async def parse_ine(
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
-    request_id = str(uuid.uuid4().hex)[:4]
+    request_id = str(uuid.uuid4().hex)[:4]  # Caben 65,536 requests
 
     # 1) Validar tipo de archivo
     allowed_types = {
@@ -303,10 +308,12 @@ async def parse_ine(
 
         ## 4.5) Guardar imagen en disco para futuros entrenamientos.
         try:
-            storage.save_valid_image(
+            storage.save_valid_image(  # Guardado de la imagen en storage
                 request_id=request_id,
                 filename=file.filename or "upload",
                 image=str(tmp_path),
+                card_id=card_id,
+                user_name=result.get("nombre_completo"),
             )
         except Exception as e:
             # No queremos que falle toda la API solo porque no se pudo guardar
@@ -326,9 +333,13 @@ async def parse_ine(
             apellido_materno=result.get("apellido_materno"),
             nombres=result.get("nombres"),
             direccion=result.get("domicilio"),
+            codigo_postal=result.get("codigo_postal"),
             curp=result.get("curp"),
             fecha_nacimiento=normalize_fecha_ddmmyyyy_to_iso(result.get("fecha_nacimiento")),
             curp_validada=result.get("validated_curp"),
+            clave_elector=result.get("clave_elector"),
+            seccion=result.get("seccion"),
+            vigencia=result.get("vigencia")
         )
 
         meta = INEMeta(
@@ -359,7 +370,6 @@ async def parse_ine(
         raise
 
     except Exception as e:
-        # Log interno recomendado aquí
         err = INEErrorResponse(
             status="error",
             error=INEErrorDetail(

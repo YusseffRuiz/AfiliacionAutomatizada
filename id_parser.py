@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from curp import CURP, CURPValueError
 
 
@@ -15,6 +15,7 @@ class INEParser:
         self.re_clave_elector = re.compile(r"\b[A-Z0-9]{18}\b")
         self.re_fecha = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
         self.re_anio = re.compile(r"\b(19|20)\d{2}\b")
+        self.re_4digits = re.compile(r"\b\d{4}\b")
         self.re_vigencia = re.compile(
             r"\b((19|20)\d{2})\s*[-–]?\s*((19|20)\d{2})\b"
         )
@@ -81,12 +82,13 @@ class INEParser:
             "sexo": None,
             "domicilio_lineas": [],
             "domicilio": None,
+            "codigo_postal": None,
             "clave_elector": None,
             "curp": None,
             "fecha_nacimiento": None,
-            # "seccion": None,
+            "seccion": None,
             "vigencia": None,
-            # "anio_registro": None,
+            "anio_registro": None,
             # "raw_text": raw_text,
         }
 
@@ -95,6 +97,7 @@ class INEParser:
         self._parse_domicilio(lines, data)
         self._parse_campos_por_regex(lines, data)
         self._parse_sexo(lines, data)
+        self._parse_seccion_scoring(lines, data)
 
         # Post-procesar domicilio
         if data["domicilio_lineas"]:
@@ -126,11 +129,13 @@ class INEParser:
             "nombre_completo": data["nombre_completo"],
             "sexo": ("HOMBRE" if data["sexo"] == "H" else "MUJER") if data.get("sexo") in ("H", "M") else None,
             "domicilio": data["domicilio"],
+            "codigo_postal": data["codigo_postal"],
             "clave_elector": data["clave_elector"],
             "curp": data["curp"],
             "validated_curp": self._verify_curp(data["curp"]),
             "fecha_nacimiento": data["fecha_nacimiento"],
             "vigencia": data["vigencia"],
+            "seccion": data["seccion"],
         }
         return data_out
 
@@ -446,6 +451,9 @@ class INEParser:
                 if clean:
                     dom_lines.append(clean)
 
+            cp_lines = lines[idx:]
+            self._extract_codigo_postal(cp_lines, data)
+
             data["domicilio_lineas"] = dom_lines
 
     @staticmethod
@@ -506,28 +514,149 @@ class INEParser:
             if len(years) >= 2:
                 data["vigencia"] = f"{years[-2]}-{years[-1]}"
 
-        # # Sección: línea que contenga la palabra SECCION o SECCIÓN + número
-        # for line in lines:
-        #     if "SECCION" in line or "SECCIÓN" in line:
-        #         nums = re.findall(r"\b\d{3,4}\b", line)
-        #         if nums:
-        #             data["seccion"] = nums[-1]
-        #             break
-        #
-        # # Año de registro: linea con "AÑO DE REGISTRO"
-        # for line in lines:
-        #     if "AÑO DE REGISTRO" in line:
-        #         years = self.re_anio.findall(line)
-        #         if years:
-        #             # tomar el primer año válido
-        #             data["anio_registro"] = years[0]
-        #         else:
-        #             # fallback: agarrar pares tipo "10 01" -> 2010
-        #             nums = re.findall(r"\b\d{2}\b", line)
-        #             if len(nums) >= 2:
-        #                 data["anio_registro"] = f"20{nums[0]}"
-        #         break
+        # Año de registro: linea con "AÑO DE REGISTRO"
+        for line in lines:
+            if "AÑO DE REGISTRO" in line:
+                years = self.re_anio.findall(line)
+                if years:
+                    # tomar el primer año válido
+                    data["anio_registro"] = years[0]
+                else:
+                    # fallback: agarrar pares tipo "10 01" -> 2010
+                    nums = re.findall(r"\b\d{2}\b", line)
+                    if len(nums) >= 2:
+                        data["anio_registro"] = f"20{nums[0]}"
+                break
 
+    def _parse_seccion_scoring(self, lines: List[str], data: Dict) -> None:
+        """
+        Extrae SECCIÓN usando scoring con:
+        - Candidatos: solo 4 dígitos.
+        - Suma score si está cerca de SECCIÓN / VIGENCIA / FECHA NACIMIENTO (+4 lineas).
+        - Descarta si parece año (19xx/20xx).
+        """
+        if data.get("seccion"):
+            return
+
+        # Normalizamos a uppercase para matching robusto
+        norm = [ln.upper().strip() for ln in lines if ln and ln.strip()]
+        if not norm:
+            return
+
+        # Índices de líneas "anchor"
+        idx_seccion = [i for i, ln in enumerate(norm) if ("SECC" in ln)]  # SECCION/SECCIÓN/SECC...
+        idx_vigencia = [i for i, ln in enumerate(norm) if ("VIGENCIA" in ln)]
+        idx_fecha = [i for i, ln in enumerate(norm) if ("FECHA" in ln or "NACIM" in ln)]
+
+        # Helper: distancia mínima a un set de índices
+        def min_dist(i: int, anchors: List[int]) -> Optional[int]:
+            if not anchors:
+                return None
+            return min(abs(i - a) for a in anchors)
+
+        best: Tuple[int, int, str] = (-10 ** 9, 10 ** 9, "")  # (score, dist_to_seccion, value)
+
+        for i, ln in enumerate(norm):
+            # Buscar candidatos de 4 dígitos en esta línea
+            for m in self.re_4digits.finditer(ln):
+                val = m.group(0)
+
+                # Descartar si parece año 19xx o 20xx
+                if self.re_anio.match(val):
+                    continue
+
+                score = 0
+
+                # Distancias
+                d_sec = min_dist(i, idx_seccion)
+                d_vig = min_dist(i, idx_vigencia)
+                d_fec = min_dist(i, idx_fecha)
+
+                # Reglas de score según tu spec
+                # +4 si está en misma línea de SECCIÓN (la línea contiene SECC y también trae el 4-dígitos)
+                if "SECC" in ln:
+                    score += 4
+
+                # +3 si está a ±2 líneas de SECCIÓN
+                if d_sec is not None and d_sec <= 2:
+                    score += 3
+
+                # +2 si está a ±3 líneas de VIGENCIA
+                if d_vig is not None and d_vig <= 3:
+                    score += 2
+
+                # +1 si está a ±4 líneas de FECHA/NACIM
+                if d_fec is not None and d_fec <= 4:
+                    score += 1
+
+                # Si no está cerca de SECCIÓN, no lo consideramos candidato fuerte
+                # (siguiendo tu instrucción: "Solo sumaremos si esta en +-4 lineas de Seccion")
+                if not (d_sec is not None and d_sec <= 4) and ("SECC" not in ln):
+                    continue
+
+                # Tie-breaker: más cerca de SECCIÓN gana
+                dist_to_sec = d_sec if d_sec is not None else 10 ** 9
+
+                candidate = (score, dist_to_sec, val)
+                if candidate[0] > best[0] or (candidate[0] == best[0] and candidate[1] < best[1]):
+                    best = candidate
+
+        if best[0] > -10 ** 8 and best[2]:
+            data["seccion"] = best[2]
+    @staticmethod
+    def _extract_codigo_postal(lines: List[str], data):
+        """
+        Extrae el Código Postal (CP) desde las líneas OCR de un INE.
+
+        Lógica:
+        - Busca patrones de 5 dígitos.
+        - Descarta números que claramente son años (19xx, 20xx).
+        - Prioriza líneas asociadas a domicilio.
+        - En caso de múltiples candidatos, devuelve el primero más probable.
+        """
+
+        CP_REGEX = re.compile(r"\b(\d{5})\b")
+        DOMICILIO_HINTS = [
+            "DOMICILIO", "CALLE", "AV", "AV.", "AVENIDA", "MZ", "LT",
+            "LOTE", "VIV", "DEPARTAMENTO", "DEP", "COL", "BARRIO",
+            "FRACC", "FRACCIONAMIENTO", "CDMX", "MEX", "MÉX"
+        ]
+
+        candidatos = []
+
+        for line in lines:
+            l = line.upper()
+
+            # Buscar CPs en la línea
+            matches = CP_REGEX.findall(l)
+            if not matches:
+                continue
+
+            for cp in matches:
+                # Descartar cosas que parecen años
+                if cp.startswith("19") or cp.startswith("20"):
+                    continue
+
+                # Asignar puntaje de probabilidad
+                score = 0
+
+                # Si la línea parece de domicilio: +2
+                if any(h in l for h in DOMICILIO_HINTS):
+                    score += 2
+
+                # Si el CP aparece después de "COL", típico caso: "COL ACACIAS 03240"
+                if re.search(r"COL\s+\S+\s+\d{5}", l):
+                    score += 2
+
+                # Si la línea tiene referencias de municipio/estado: +1
+                if "CDMX" in l or "MEX" in l or "MÉX" in l:
+                    score += 1
+
+                candidatos.append((cp, score, l))
+
+        # Ordenar por score descendente → devolver el más probable
+        candidatos.sort(key=lambda x: x[1], reverse=True)
+        data["codigo_postal"] = candidatos[0][0]
 
     # ------- Parsing infiriendo por curp --------
 

@@ -66,7 +66,7 @@ def process_with_yolo_v2(processor,
             texto = pytesseract.image_to_string(crop, lang="spa", config=config)
             data_full = extra_tesseract_process(crop_image=crop, processor=processor, parser=parser, texto_full=texto)
 
-
+        print(texto)
         score = score_parse_result(data_full)
         # print(f"[CANDIDATO {i}] score={score}, data_out={data_out}")
 
@@ -201,10 +201,10 @@ def ine_pipeline(processor, parser, ine_imagen, agent=None, page=0):
 
 
 if __name__ == "__main__":
-    # ine_imagen = "imagenes_prueba/INE_13.jpg"
+    ine_imagen = "imagenes_prueba/INE_13.jpg"
     # ine_imagen = ("imagenes_prueba/INE_7.jpeg")
     # ine_imagen = "imagenes_prueba/INEGloria.pdf"
-    ine_imagen = "imagenes_prueba/IneAdan.pdf"
+    # ine_imagen = "imagenes_prueba/IneAdan.pdf"
 
     ocr_engine = "paddle"
     # ocr_engine = "mistral"
@@ -240,11 +240,11 @@ if __name__ == "__main__":
 
     print(ine_pipeline(processor=processor, parser=parser, ine_imagen=ine_imagen, agent=agent, page=0))
 
-    saved_path = storage.save_valid_image(
-        image=contents,
-        request_id=request_id,
-        filename=ine_imagen,
-    )
-    print("Image saved in {}".format(saved_path))
+    # saved_path = storage.save_valid_image(
+    #     image=contents,
+    #     request_id=request_id,
+    #     filename=ine_imagen,
+    # )
+    # print("Image saved in {}".format(saved_path))
 
 

@@ -8,7 +8,7 @@ from pdf2image import convert_from_bytes, convert_from_path
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # raíz del proyecto
 DEFAULT_STORAGE_DIR = BASE_DIR / "storage"
-MAX_BYTES = 500_000  # 0.5 MB
+MAX_BYTES = 300_000  # 0.3 MB
 
 
 def get_storage_dir() -> Path:
@@ -66,7 +66,9 @@ def _compress_to_max_size(bgr: np.ndarray, max_bytes: int = MAX_BYTES) -> bytes:
 def save_valid_image(
     request_id: str,
     filename: str,
+    user_name: str,
     image: str,
+    card_id: str,
     out_dir: str = "storage",
     max_bytes: int = MAX_BYTES,
 ) -> str:
@@ -110,7 +112,7 @@ def save_valid_image(
     # 2) Comprimir asegurando tamaño máximo
     final_bytes = _compress_to_max_size(bgr, max_bytes=max_bytes)
     # 3) Nombre final: siempre .jpg
-    out_name = f"{request_id}_{base_stem}.jpg"
+    out_name = f"{request_id}_name_{user_name}_id_num_{card_id}.jpg"
     out_path = Path(out_dir) / out_name
 
     with open(out_path, "wb") as f:
