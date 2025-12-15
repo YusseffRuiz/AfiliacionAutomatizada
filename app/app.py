@@ -56,7 +56,6 @@ class INEData(BaseModel):
     apellido_paterno: Optional[str] = None
     apellido_materno: Optional[str] = None
     nombres: Optional[str] = None
-    sexo: Optional[str] = None
     direccion: Optional[str] = None  # viene de "domicilio"
     codigo_postal: Optional[str] = None
     curp: Optional[str] = None  # Validacion con api de curp
@@ -237,7 +236,7 @@ async def readyz():
 )
 async def parse_ine(
     file: UploadFile = File(...),
-    card_id: Optional[str] = "1",
+    card_id: str = Form(1),
     source: Optional[str] = Form(None),
     return_debug: bool = Form(False),
     page: int = Form(0),
@@ -333,7 +332,6 @@ async def parse_ine(
             apellido_paterno=result.get("apellido_paterno"),
             apellido_materno=result.get("apellido_materno"),
             nombres=result.get("nombres"),
-            sexo=result.get("sexo"),
             direccion=result.get("domicilio"),
             codigo_postal=result.get("codigo_postal"),
             curp=result.get("curp"),
