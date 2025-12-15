@@ -236,6 +236,7 @@ async def readyz():
 )
 async def parse_ine(
     file: UploadFile = File(...),
+    card_id: str = Form(...),
     source: Optional[str] = Form(None),
     return_debug: bool = Form(False),
     page: int = Form(0),
@@ -243,7 +244,7 @@ async def parse_ine(
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
-    request_id = str(uuid.uuid4().hex)[:8]
+    request_id = str(uuid.uuid4().hex)[:4]  # Caben 65,536 requests
 
     # 1) Validar tipo de archivo
     allowed_types = {
@@ -307,10 +308,12 @@ async def parse_ine(
 
         ## 4.5) Guardar imagen en disco para futuros entrenamientos.
         try:
-            storage.save_valid_image(
+            storage.save_valid_image(  # Guardado de la imagen en storage
                 request_id=request_id,
                 filename=file.filename or "upload",
                 image=str(tmp_path),
+                card_id=card_id,
+                user_name=result.get("nombre_completo"),
             )
         except Exception as e:
             # No queremos que falle toda la API solo porque no se pudo guardar
