@@ -119,6 +119,7 @@ Se usa configuración optimizada. Y se ajusta dinámicamente por zonas más deli
 
 
 4. Parser de campos
+
 El parser:
 
 * normaliza el texto
@@ -127,12 +128,16 @@ El parser:
 
 Encuentra secciones:
 
-- “NOMBRE”
-- domicilio (CALLE / AV / COL)
-- CURP
-- CLAVE DE ELECTOR
-- fecha de nacimiento
-- vigencia
+- Nombre Completo (Apellido Paterno / Materno / Nombre(s))
+- Sexo
+- Domicilio (CALLE / AV / COL / CP)
+- Código Postal
+- CURP (Con Validación)
+- Clave de Elector
+- Fecha de nacimiento
+- Vigencia
+- Sección
+
 
 Extrae nombre completo usando heurísticas robustas:
 
@@ -158,6 +163,34 @@ Finalmente  el parser genera una salida en formato Json:
   "fecha_nacimiento": "YYYY-MM-DD",
   "vigencia": "YYYY-YYYY"
 }
+```
+
+## Entrega de la API
+Se entrega el siguiente contrato con la llamada de la API, que se pueden modificar directamente de los datos extraídos del parser.
+
+```
+ data = INEData(
+            apellido_paterno,
+            apellido_materno,
+            nombres,
+            sexo,
+            direccion,
+            codigo_postal,
+            curp,
+            fecha_nacimiento,
+            curp_validada,
+            clave_elector,
+            seccion=,
+            vigencia=
+        )
+
+        meta = INEMeta(
+            request_id,
+            score,
+            parser_version=,
+            processing_ms,
+            warnings,
+        )
 ```
 
 ## Selección del mejor candidato
