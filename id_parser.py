@@ -532,7 +532,7 @@ class INEParser:
         """
         Extrae SECCIÓN usando scoring con:
         - Candidatos: solo 4 dígitos.
-        - Suma score si está cerca de SECCIÓN / VIGENCIA / FECHA NACIMIENTO.
+        - Suma score si está cerca de SECCIÓN / VIGENCIA / FECHA NACIMIENTO (+4 lineas).
         - Descarta si parece año (19xx/20xx).
         """
         if data.get("seccion"):
@@ -573,24 +573,24 @@ class INEParser:
                 d_fec = min_dist(i, idx_fecha)
 
                 # Reglas de score según tu spec
-                # +3 si está en misma línea de SECCIÓN (la línea contiene SECC y también trae el 4-dígitos)
+                # +4 si está en misma línea de SECCIÓN (la línea contiene SECC y también trae el 4-dígitos)
                 if "SECC" in ln:
+                    score += 4
+
+                # +3 si está a ±2 líneas de SECCIÓN
+                if d_sec is not None and d_sec <= 2:
                     score += 3
 
-                # +2 si está a ±2 líneas de SECCIÓN
-                if d_sec is not None and d_sec <= 4:
+                # +2 si está a ±3 líneas de VIGENCIA
+                if d_vig is not None and d_vig <= 3:
                     score += 2
 
-                # +1 si está a ±2 líneas de VIGENCIA
-                if d_vig is not None and d_vig <= 3:
+                # +1 si está a ±4 líneas de FECHA/NACIM
+                if d_fec is not None and d_fec <= 4:
                     score += 1
 
-                # +1 si está a ±2 líneas de FECHA/NACIM
-                if d_fec is not None and d_fec <= 2:
-                    score += 1
-
-                # Si no está cerca de SECCIÓN (±4), no lo consideramos candidato fuerte
-                # (siguiendo tu instrucción: "Solo sumaremos si esta en +-2 lineas de Seccion")
+                # Si no está cerca de SECCIÓN, no lo consideramos candidato fuerte
+                # (siguiendo tu instrucción: "Solo sumaremos si esta en +-4 lineas de Seccion")
                 if not (d_sec is not None and d_sec <= 4) and ("SECC" not in ln):
                     continue
 

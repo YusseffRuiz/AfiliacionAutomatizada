@@ -63,7 +63,7 @@ class INEData(BaseModel):
     fecha_nacimiento: Optional[str] = None  # formato ISO: YYYY-MM-DD // Por verse
     curp_validada : Optional[bool] = None  # validacion de curp con gob
     vigencia: Optional[str] = None
-    sector: Optional[str] = None
+    seccion: Optional[str] = None
 
 
 class INEMeta(BaseModel):
@@ -335,7 +335,7 @@ async def parse_ine(
             fecha_nacimiento=normalize_fecha_ddmmyyyy_to_iso(result.get("fecha_nacimiento")),
             curp_validada=result.get("validated_curp"),
             clave_elector=result.get("clave_elector"),
-            sector=result.get("sector"),
+            seccion=result.get("seccion"),
             vigencia=result.get("vigencia")
         )
 
