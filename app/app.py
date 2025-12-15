@@ -236,7 +236,7 @@ async def readyz():
 )
 async def parse_ine(
     file: UploadFile = File(...),
-    card_id: str = Form(...),
+    card_id: str = Form(1),
     source: Optional[str] = Form(None),
     return_debug: bool = Form(False),
     page: int = Form(0),
@@ -370,7 +370,6 @@ async def parse_ine(
         raise
 
     except Exception as e:
-        # Log interno recomendado aquí
         err = INEErrorResponse(
             status="error",
             error=INEErrorDetail(
