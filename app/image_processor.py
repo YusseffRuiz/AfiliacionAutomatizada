@@ -1,13 +1,12 @@
 from pathlib import Path
-
+import logging
 import cv2
 import numpy as np
 from pdf2image import convert_from_path
 from ultralytics import YOLO
-from PIL import Image
 import uuid
 
-
+logger = logging.getLogger("ine_api.image_processor")
 
 class IDImageProcessor:
     """
@@ -45,7 +44,10 @@ class IDImageProcessor:
 
         results = self.model(bgr, conf=self.conf_threshold, verbose=False)
 
+        logger.info(f"stage=yolo_candidates count={len(results)}")
+
         if not results or len(results[0].boxes) == 0:
+            logger.warning("stage=yolo_no_boxes")
             raise RuntimeError("YOLOv8 no encontró ninguna credencial en la imagen.")
 
         boxes = results[0].boxes
@@ -78,8 +80,9 @@ class IDImageProcessor:
                 crops.append(crop)
 
         if not crops:
+            logger.exception(f"stage=No crops found")
             raise RuntimeError("No se pudieron obtener recortes válidos.")
-
+        logger.info(f"stage=crop0 {self._img_info(crops[0], 'crop0')}")
         return crops
 
     def process_file(self, path: str, page: int = 0) -> np.ndarray:
@@ -352,7 +355,7 @@ class IDImageProcessor:
         else:
             supported = " ".join(self.SUPPORTED_IMAGE_EXT)
             raise ValueError(f"Formato no soportado: {ext}, favor de usar {supported} o pdf")
-
+        logger.info(f"stage=loaded {self._img_info(bgr, 'bgr')}")
         return bgr
 
     @staticmethod
@@ -390,7 +393,7 @@ class IDImageProcessor:
         """
         # YOLO espera imagen en formato estándar (BGR está bien, ultralytics lo maneja)
         results = self.model(bgr, conf=self.conf_threshold, verbose=False)
-
+        logger.info(f"stage=yolo_candidates count={len(results)}")
         if not results or len(results[0].boxes) == 0:
             raise RuntimeError("YOLOv8 no encontró ninguna credencial en la imagen.")
 
@@ -424,8 +427,8 @@ class IDImageProcessor:
 
         return cropped
 
-    @staticmethod
-    def _preprocess_for_ocr(bgr: np.ndarray, scale=3.0, h = 32, searchwindowssize=21, clahe_clip_limit=2.0,
+
+    def _preprocess_for_ocr(self, bgr: np.ndarray, scale=3.0, h = 32, searchwindowssize=21, clahe_clip_limit=2.0,
                             alpha_contrast: float = 1.7, beta_brightness: int = -20,
                             ) -> np.ndarray:
         """
@@ -469,7 +472,7 @@ class IDImageProcessor:
             (int(w_img * scale), int(h_img * scale)),
             interpolation=cv2.INTER_CUBIC,
         )
-
+        logger.info(f"stage=preprocess_out {self._img_info(gray, 'gray')}")
         return gray
 
     # ---------- Utilidades de debug ----------
@@ -497,3 +500,15 @@ class IDImageProcessor:
 
         cv2.imwrite(str(out_path), bgr)
         return debug_id
+
+    # ------------- Metodos de Debug -------------------
+    @staticmethod
+    def _img_info(img, label="img"):
+        if img is None:
+            return f"{label}=None"
+        try:
+            h, w = img.shape[:2]
+            ch = 1 if len(img.shape) == 2 else img.shape[2]
+            return f"{label}.shape=({h},{w},{ch}) dtype={img.dtype} min={img.min()} max={img.max()}"
+        except Exception:
+            return f"{label}=<uninspectable>"
