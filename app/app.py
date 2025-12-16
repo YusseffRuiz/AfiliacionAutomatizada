@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import uuid
 
 from dotenv import load_dotenv
@@ -151,6 +152,14 @@ agent_mistral = MistralOCRAgent(api_key=api_key)
 
 # -----------------Error Handling ---------------------
 logger = logging.getLogger("ine_api")
+
+logging.basicConfig(
+    level=logging.INFO,  # ⬅️ IMPORTANTE
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ],
+)
 
 @app.exception_handler(INEApiError)
 async def ine_api_error_handler(request: Request, exc: INEApiError):
