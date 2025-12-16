@@ -363,6 +363,7 @@ class IDImageProcessor:
         """Carga JPG/PNG en BGR (OpenCV)."""
         img = cv2.imread(str(path))
         if img is None:
+            logger.info(f"No se pudo leer la imagen con OpenCV: {path}")
             raise ValueError(f"No se pudo leer la imagen: {path}")
         return img
 
@@ -469,6 +470,7 @@ class IDImageProcessor:
         h_img, w_img = gray.shape
         gray = cv2.resize(
             gray,
+
             (int(w_img * scale), int(h_img * scale)),
             interpolation=cv2.INTER_CUBIC,
         )
