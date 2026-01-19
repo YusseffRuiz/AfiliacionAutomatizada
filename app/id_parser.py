@@ -1,6 +1,9 @@
 import re
 from typing import Dict, Optional, List, Tuple
 from curp import CURP, CURPValueError
+from postalcodes_mexico.postalcodes_mexico import places
+from sentry_sdk import init
+from sympy.physics.units import mmu
 
 
 class INEParser:
@@ -19,6 +22,7 @@ class INEParser:
         self.re_vigencia = re.compile(
             r"\b((19|20)\d{2})\s*[-–]?\s*((19|20)\d{2})\b"
         )
+        self.init_dom = None
 
     # --------- API pública ---------
     @staticmethod
@@ -103,6 +107,16 @@ class INEParser:
         if data["domicilio_lineas"]:
             data["domicilio"] = ", ".join(data["domicilio_lineas"])
 
+        my_place = places(data["codigo_postal"])
+        if len(my_place) > 0 and data["domicilio"]:
+            idx = 0
+            for i in range(len(my_place)):
+                if my_place[i].place.upper() in data["domicilio"]:
+                    idx = i
+            my_place = my_place[idx]
+        else:
+            my_place = my_place[0]
+
         # Construir nombre completo si se pudo extraer por partes
         parts = [
             data["apellido_paterno"],
@@ -129,7 +143,12 @@ class INEParser:
             "nombre_completo": data["nombre_completo"],
             "sexo": ("HOMBRE" if data["sexo"] == "H" else "MUJER") if data.get("sexo") in ("H", "M") else None,
             "domicilio": data["domicilio"],
-            "codigo_postal": data["codigo_postal"],
+            "codigo_postal": my_place.postal_code,
+            "estado": my_place.state,
+            "municipio": my_place.municipality,
+            "ciudad": my_place.city,
+            "colonia": my_place.place,
+            "calle": self.init_dom,
             "clave_elector": data["clave_elector"],
             "curp": data["curp"],
             "validated_curp": self._verify_curp(data["curp"]),
@@ -257,7 +276,7 @@ class INEParser:
         # Suele venir en las 3 líneas siguientes
         for i in range(idx + 1, min(idx + 7, len(lines))):
             line = lines[i].strip()
-            if not line:
+            if not line or (len(line) <= 2 and line not in PARTICULAS):
                 continue
             line = line.upper()
             # Parar cuando aparezca otra etiqueta fuerte
@@ -400,6 +419,7 @@ class INEParser:
         """
         idxs = self._find_line_indices(lines, "DOMICILIO")
         noise_idx_flag = False
+        init_dom = None
         stop_tags = [
             "CLAVE DE ELECTOR",
             "ELECTOR",
@@ -422,12 +442,12 @@ class INEParser:
             # 1) Contenido en la misma línea que 'DOMICILIO'
             line_dom = lines[idx].strip()
             m_inline = re.search(r"DOMICILIO\s+(.+)$", line_dom)
-
             if m_inline:
                 first_dom = m_inline.group(1).strip()
                 # limpiar basura visual
                 first_dom = re.sub(r"\s{2,}.*$", "", first_dom).strip()
                 first_dom = re.sub(r"^[\-\.\·\•\_\|\s]+", "", first_dom).strip()
+                init_dom = first_dom
                 if first_dom:
                     dom_lines.append(first_dom)
 
@@ -603,10 +623,10 @@ class INEParser:
 
         if best[0] > -10 ** 8 and best[2]:
             data["seccion"] = best[2]
-    @staticmethod
-    def _extract_codigo_postal(lines: List[str], data):
+
+    def _extract_codigo_postal(self, lines: List[str], data):
         """
-        Extrae el Código Postal (CP) desde las líneas OCR de un INE.
+        Extrae el Código Postal (CP) desde las líneas OCR de un INE. Consigue la primera linea del domicilio (calle, av, etc).
 
         Lógica:
         - Busca patrones de 5 dígitos.
@@ -617,20 +637,23 @@ class INEParser:
 
         CP_REGEX = re.compile(r"\b(\d{5})\b")
         DOMICILIO_HINTS = [
-            "DOMICILIO", "CALLE", "AV", "AV.", "AVENIDA", "MZ", "LT",
-            "LOTE", "VIV", "DEPARTAMENTO", "DEP", "COL", "BARRIO",
+            "DOMICILIO", "COL", "BARRIO",
             "FRACC", "FRACCIONAMIENTO", "CDMX", "MEX", "MÉX"
         ]
 
         candidatos = []
-
+        self.init_dom = " "
+        cp_match = False
         for line in lines:
             l = line.upper()
-
             # Buscar CPs en la línea
             matches = CP_REGEX.findall(l)
             if not matches:
+                if l not in DOMICILIO_HINTS and not cp_match:
+                    self.init_dom += l.lower()
                 continue
+            else:
+                cp_match = True
 
             for cp in matches:
                 # Descartar cosas que parecen años
@@ -654,6 +677,7 @@ class INEParser:
 
                 candidatos.append((cp, score, l))
 
+            # line_count+=1
         # Ordenar por score descendente → devolver el más probable
         candidatos.sort(key=lambda x: x[1], reverse=True)
         data["codigo_postal"] = candidatos[0][0]
