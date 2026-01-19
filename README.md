@@ -176,6 +176,11 @@ Se entrega el siguiente contrato con la llamada de la API, que se pueden modific
             sexo,
             direccion,
             codigo_postal,
+            calle,
+            colonia,
+            municipio,
+            ciudad,
+            estado,
             curp,
             fecha_nacimiento,
             curp_validada,
@@ -186,6 +191,7 @@ Se entrega el siguiente contrato con la llamada de la API, que se pueden modific
 
         meta = INEMeta(
             request_id,
+            ocr_engine
             score,
             parser_version=,
             processing_ms,
