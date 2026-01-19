@@ -59,6 +59,11 @@ class INEData(BaseModel):
     nombres: Optional[str] = None
     sexo: Optional[str] = None
     direccion: Optional[str] = None  # viene de "domicilio"
+    calle: Optional[str] = None
+    colonia: Optional[str] = None
+    municipio: Optional[str] = None
+    ciudad : Optional[str] = None
+    estado: Optional[str] = None
     codigo_postal: Optional[str] = None
     curp: Optional[str] = None  # Validacion con api de curp
     clave_elector: Optional[str] = None
@@ -74,6 +79,7 @@ class INEMeta(BaseModel):
     parser_version: str
     processing_ms: int
     warnings: List[str] = []
+    ocr_engine: Optional[str] = None
 
 
 class INEOKResponse(BaseModel):
@@ -121,6 +127,8 @@ def build_warnings(result: dict) -> List[str]:
         warnings.append("domicilio_no_detectado")
     if not result.get("fecha_nacimiento"):
         warnings.append("fecha_nacimiento_no_detectada")
+    if not result.get("codigo_postal"):
+        warnings.append("codigo_postal_no_detectado")
     return warnings
 
 
@@ -345,6 +353,11 @@ async def parse_ine(
             sexo=result.get("sexo"),
             direccion=result.get("domicilio"),
             codigo_postal=result.get("codigo_postal"),
+            calle=result.get("calle"),
+            colonia=result.get("colonia"),
+            ciudad=result.get("ciudad"),
+            municipio=result.get("municipio"),
+            estado=result.get("estado"),
             curp=result.get("curp"),
             fecha_nacimiento=normalize_fecha_ddmmyyyy_to_iso(result.get("fecha_nacimiento")),
             curp_validada=result.get("validated_curp"),
@@ -356,6 +369,7 @@ async def parse_ine(
         meta = INEMeta(
             request_id=request_id,
             score=score,
+            ocr_engine=ocr_engine,
             parser_version="ine-mvp-v1",
             processing_ms=int((time.time() - start) * 1000),
             warnings=build_warnings(result),
