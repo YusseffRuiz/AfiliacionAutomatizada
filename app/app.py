@@ -28,6 +28,7 @@ class ErrorContext(BaseModel):
     filename: Optional[str] = None
     stage: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
+    timestamp: Optional[str] = None
 
 
 class ErrorPayload(BaseModel):
@@ -35,6 +36,7 @@ class ErrorPayload(BaseModel):
     message: str               # mensaje entendible
     detail: Optional[str] = None  # detalle técnico más específico
     context: Optional[ErrorContext] = None
+    timestamp: Optional[str] = None
 
 class INEApiError(Exception):
     def __init__(
@@ -45,12 +47,14 @@ class INEApiError(Exception):
         detail: Optional[str] = None,
         context: Optional[dict] = None,
         status_code: int = 400,
+        timestamp: Optional[str] = None,
     ):
         self.type = type
         self.message = message
         self.detail = detail
         self.context = context or {}
         self.status_code = status_code
+        self.timestamp = timestamp
         super().__init__(message)
 
 class INEData(BaseModel):
@@ -92,6 +96,7 @@ class INEErrorDetail(BaseModel):
     type: str
     message: str
     suggestion: Optional[str] = None
+    timestamp: Optional[str] = None
 
 
 class INEErrorResponse(BaseModel):
@@ -176,6 +181,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
+        timestamp = str(time.time())
     )
 
     # Log estructurado
@@ -192,7 +198,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
 
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": payload.dict()},
+        content={"error": payload.model_dump()},
     )
 
 
@@ -205,6 +211,7 @@ async def generic_error_handler(request: Request, exc: Exception):
         type="internal_error",
         message="Ocurrió un error inesperado procesando la credencial.",
         detail=str(exc),
+        timestamp=str(time.time()),
         context=ErrorContext(
             extra={"path": str(request.url)}
         ),
@@ -212,7 +219,7 @@ async def generic_error_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"error": payload.dict()},
+        content={"error": payload.model_dump()},
     )
 
 # ----------------- Endpoint principal -----------------
@@ -237,6 +244,7 @@ async def readyz():
     payload = {
         "status": status,
         "components": components,
+        "timestamp": time.time(),
     }
 
     status_code = 200 if all_ok else 503
@@ -258,7 +266,7 @@ async def parse_ine(
     source: Optional[str] = Form(None),
     return_debug: bool = Form(False),
     page: int = Form(0),
-    ocr_engine: str = "paddle",
+    ocr_engine: str = "mistral",
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
@@ -277,6 +285,7 @@ async def parse_ine(
             detail={
                 "type": "unsupported_media_type",
                 "message": f"Formato no soportado: {file.content_type}. Use JPG, PNG, TIFF o PDF.",
+                "timestamp": time.time(),
             },
         )
 
@@ -305,11 +314,12 @@ async def parse_ine(
                 detail=valid_img["detail"],
                 context=valid_img["context"],
                 status_code=valid_img["status_code"],
+                timestamp=str(time.time()),
             )
-
+        print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=img_bgr)
-
+        print("Done processing results")
         score = int(result.get("score", 0))
         if score == 0:
             raise INEApiError(
@@ -321,9 +331,10 @@ async def parse_ine(
                     "filename": file.filename,
                     "stage": "ocr",
                 },
+                timestamp=str(time.time()),
                 status_code=422,
             )
-
+        print("Done scoring")
         ## 4.5) Guardar imagen en disco para futuros entrenamientos.
         try:
             storage.save_valid_image(  # Guardado de la imagen en storage
@@ -333,6 +344,7 @@ async def parse_ine(
                 card_id=card_id,
                 user_name=result.get("nombre_completo"),
             )
+            print("Correct storing")
         except Exception as e:
             # No queremos que falle toda la API solo porque no se pudo guardar
             logger.warning(
@@ -386,9 +398,10 @@ async def parse_ine(
                 type="no_id_detected",
                 message=str(e),
                 suggestion="Asegúrese de que la credencial completa sea visible, con buena iluminación.",
+                timestamp=str(time.time()),
             ),
         )
-        raise HTTPException(status_code=422, detail=err.dict()["error"])
+        raise HTTPException(status_code=422, detail=err.model_dump()["error"])
 
     except HTTPException:
         # Re-lanzar HTTPExceptions tal cual
@@ -400,9 +413,10 @@ async def parse_ine(
             error=INEErrorDetail(
                 type="internal_error",
                 message="Ocurrió un error inesperado procesando la credencial.",
+                timestamp=str(time.time()),
             ),
         )
-        raise HTTPException(status_code=500, detail=err.dict()["error"])
+        raise HTTPException(status_code=500, detail=err.model_dump()["error"])
 
     finally:
         # 6) Borrar archivo temporal

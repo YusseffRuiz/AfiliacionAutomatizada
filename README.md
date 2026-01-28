@@ -227,6 +227,8 @@ curl -X POST "http://127.0.0.1:8000/api/ine/parse" \
 
 ## Trabajo a Futuro
 
+- Mejorar identificación de IFEs (ID anterior).
+- Implementar sistema antirotación (procesar en cualquier orientación).
 
 Entrenar YOLOv8 multicampo para detectar zonas de:
 * nombre
