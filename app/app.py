@@ -6,7 +6,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import tempfile
@@ -23,6 +23,7 @@ from .utils import health, storage
 
 # ----------------- Modelos Pydantic de respuesta -----------------
 class ErrorContext(BaseModel):
+    model_config = ConfigDict(extra='allow')
     ocr_engine: Optional[str] = None
     attempt: Optional[str] = None
     filename: Optional[str] = None
@@ -46,8 +47,8 @@ class INEApiError(Exception):
         message: str,
         detail: Optional[str] = None,
         context: Optional[dict] = None,
-        status_code: int = 400,
         timestamp: Optional[str] = None,
+        status_code: int = 400,
     ):
         self.type = type
         self.message = message
@@ -181,24 +182,22 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
-        timestamp = str(time.time())
+        timestamp = exc.timestamp,
     )
-
     # Log estructurado
     logger.error(
         "INEApiError",
         extra={
             "error_type": exc.type,
-            "message": exc.message,
-            "detail": exc.detail,
-            "context": exc.context,
+            "error_message": exc.message,
+            "error_detail": exc.detail,
+            "error_context": exc.context,
             "path": str(request.url),
         },
     )
-
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": payload.model_dump()},
+        content={"error": payload.model_dump(exclude_none=True)},
     )
 
 
@@ -211,7 +210,7 @@ async def generic_error_handler(request: Request, exc: Exception):
         type="internal_error",
         message="Ocurrió un error inesperado procesando la credencial.",
         detail=str(exc),
-        timestamp=str(time.time()),
+        timestamp=str(datetime.datetime.now()),
         context=ErrorContext(
             extra={"path": str(request.url)}
         ),
@@ -219,7 +218,7 @@ async def generic_error_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"error": payload.model_dump()},
+        content={"error": payload.model_dump(exclude_none=True)},
     )
 
 # ----------------- Endpoint principal -----------------
@@ -244,7 +243,7 @@ async def readyz():
     payload = {
         "status": status,
         "components": components,
-        "timestamp": time.time(),
+        "timestamp": str(datetime.datetime.now()),
     }
 
     status_code = 200 if all_ok else 503
@@ -285,7 +284,7 @@ async def parse_ine(
             detail={
                 "type": "unsupported_media_type",
                 "message": f"Formato no soportado: {file.content_type}. Use JPG, PNG, TIFF o PDF.",
-                "timestamp": time.time(),
+                "timestamp": str(datetime.datetime.now()),
             },
         )
 
@@ -314,24 +313,37 @@ async def parse_ine(
                 detail=valid_img["detail"],
                 context=valid_img["context"],
                 status_code=valid_img["status_code"],
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
             )
         print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
-        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=img_bgr)
-        print("Done processing results")
+        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
+        if 'error'in result:
+            raise INEApiError(
+                type="ocr_error",
+                message="No se pudo extraer texto legible de la credencial.",
+                detail=result['error'],
+                context={
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
+                    "stage": "ocr",
+                },
+                timestamp=str(datetime.datetime.now()),
+                status_code=422,
+            )
         score = int(result.get("score", 0))
+        print("Done processing results", score)
         if score == 0:
             raise INEApiError(
                 type="ocr_error",
                 message="No se pudo extraer texto legible de la credencial.",
                 detail="El motor OCR devolvió texto vacío o solo ruido.",
                 context={
-                    "ocr_engine": ocr_engine,
-                    "filename": file.filename,
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
                     "stage": "ocr",
                 },
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
                 status_code=422,
             )
         print("Done scoring")
@@ -388,7 +400,9 @@ async def parse_ine(
         )
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
-        return JSONResponse(content=response.model_dump())
+        return JSONResponse(content=response.model_dump(exclude_none=True))
+    except INEApiError:
+        raise
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
@@ -398,13 +412,13 @@ async def parse_ine(
                 type="no_id_detected",
                 message=str(e),
                 suggestion="Asegúrese de que la credencial completa sea visible, con buena iluminación.",
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=422, detail=err.model_dump()["error"])
+        raise HTTPException(status_code=422, detail=err.model_dump(exclude_none=True)["error"])
 
     except HTTPException:
-        # Re-lanzar HTTPExceptions tal cual
+        # Re-lanzar HTTPExceptions
         raise
 
     except Exception as e:
@@ -412,11 +426,11 @@ async def parse_ine(
             status="error",
             error=INEErrorDetail(
                 type="internal_error",
-                message="Ocurrió un error inesperado procesando la credencial.",
-                timestamp=str(time.time()),
+                message=f"Ocurrió un error inesperado procesando la credencial: {e}",
+                timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=500, detail=err.model_dump()["error"])
+        raise HTTPException(status_code=500, detail=err.model_dump(exclude_none=True)["error"])
 
     finally:
         # 6) Borrar archivo temporal

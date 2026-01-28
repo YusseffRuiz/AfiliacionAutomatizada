@@ -39,7 +39,9 @@ def process_with_yolo_v2(processor,
     best_score = -1
 
     crops = processor.get_document_crops(ine_imagen, max_candidates=max_candidates)
-
+    print("got crops", len(crops))
+    if len(crops) < 1:
+        return {"error": "La imagen esta muy borrosa, lejana o dañada"}
     for i, crop in enumerate(crops):
         crop = processor.public_preprocess_for_ocr(crop, scale=2.5, h=18, searchwindowssize=21, clahe_clip_limit=3.4,
                                                    alpha_contrast=1.8, beta_brightness=-21)
@@ -57,6 +59,7 @@ def process_with_yolo_v2(processor,
             config = r"--psm 6 --oem 1 -c preserve_interword_spaces=1"
             texto = pytesseract.image_to_string(crop, lang="spa", config=config)
             data_full = extra_tesseract_process(crop_image=crop, processor=processor, parser=parser, texto_full=texto)
+            print("For any reason, agent was not gathered")
 
 
         score = score_parse_result(data_full)
@@ -65,7 +68,7 @@ def process_with_yolo_v2(processor,
         if score > best_score:
             best_score = score
             best_data = data_full
-
+        print("got best data")
         # Si ya estamos bastante bien, podemos parar
         if score >= score_ok_threshold:
             best_data["attempt"] = f"yolo_candidate_{i}"
