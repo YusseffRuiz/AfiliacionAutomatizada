@@ -107,7 +107,7 @@ class INEParser:
         if data["domicilio_lineas"]:
             data["domicilio"] = ", ".join(data["domicilio_lineas"])
 
-        if len(data["codigo_postal"])>=4:
+        if data["codigo_postal"] and len(data["codigo_postal"])>=4:
             my_place = places(data["codigo_postal"])
 
             if len(my_place) > 0 and data["domicilio"]:
