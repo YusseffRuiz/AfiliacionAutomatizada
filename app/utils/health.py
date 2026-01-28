@@ -3,13 +3,14 @@ from typing import Dict, Any
 import cv2
 import numpy as np
 
+
 def validate_image_quality(
     img: np.ndarray,
     filename: str,
     min_side: int = 600,
     max_side: int = 5000,
     min_contrast: float = 12.0,
-    min_edges: int = 500
+    processor = None,
 ):
     """
     Valida que la imagen sea legible antes de procesarla por OCR.
@@ -86,8 +87,16 @@ def validate_image_quality(
             'status_code': 400,
         }
 
-    # --- 5) TODO: Detectar bordes para validar estructura, identificar rectangulos. ---
-
+    # --- 5) Verificar nitidez
+    is_blurry, nitidez = processor.blurry_detected(image=gray)
+    if is_blurry:
+        return {
+            "type": "invalid_image",
+            "message": "La imagen es de muy mala calidad.",
+            "detail": f"Nitidez: {nitidez}, mínimo requerido: {min_contrast}.",
+            "context": {"filename": filename, "stage": "image_validation"},
+            'status_code': 400,
+        }
     # If everything is good:
     return True
 
