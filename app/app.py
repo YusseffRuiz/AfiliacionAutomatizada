@@ -6,7 +6,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import tempfile
@@ -23,6 +23,7 @@ from .utils import health, storage
 
 # ----------------- Modelos Pydantic de respuesta -----------------
 class ErrorContext(BaseModel):
+    model_config = ConfigDict(extra='allow')
     ocr_engine: Optional[str] = None
     attempt: Optional[str] = None
     filename: Optional[str] = None
@@ -198,7 +199,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
     print(payload.model_dump())
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": payload.model_dump()},
+        content={"error": payload.model_dump(exclude_none=True)},
     )
 
 
@@ -219,7 +220,7 @@ async def generic_error_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"error": payload.model_dump()},
+        content={"error": payload.model_dump(exclude_none=True)},
     )
 
 # ----------------- Endpoint principal -----------------
@@ -319,6 +320,7 @@ async def parse_ine(
         print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
+        print(result)
         if hasattr(result, "error"):
             raise INEApiError(
                 type="ocr_error",
@@ -402,7 +404,7 @@ async def parse_ine(
         )
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
-        return JSONResponse(content=response.model_dump())
+        return JSONResponse(content=response.model_dump(exclude_none=True))
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
@@ -415,7 +417,7 @@ async def parse_ine(
                 timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=422, detail=err.model_dump()["error"])
+        raise HTTPException(status_code=422, detail=err.model_dump(exclude_none=True)["error"])
 
     except HTTPException:
         # Re-lanzar HTTPExceptions tal cual
@@ -430,7 +432,7 @@ async def parse_ine(
                 timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=500, detail=err.model_dump()["error"])
+        raise HTTPException(status_code=500, detail=err.model_dump(exclude_none=True)["error"])
 
     finally:
         # 6) Borrar archivo temporal
