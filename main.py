@@ -211,7 +211,7 @@ def ine_pipeline(processor, parser, ine_imagen, agent=None, page=0):
 
 if __name__ == "__main__":
     # ine_imagen = "imagenes_prueba/INE_1.jpg"
-    # ine_imagen = ("imagenes_prueba/INE_8.jpeg")
+    ine_imagen = ("imagenes_prueba/INE_14.jpeg")
     # ine_imagen = ("imagenes_prueba/ineMedium.png")
     # ine_imagen = "imagenes_prueba/INEGloria.pdf"
     # ine_imagen = "imagenes_prueba/IneAdan.pdf"

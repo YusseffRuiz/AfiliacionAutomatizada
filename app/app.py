@@ -305,7 +305,7 @@ async def parse_ine(
 
         # 3) Validacion de imagen
         img_bgr = processor.public_load_image(str(tmp_path), page=page)
-        valid_img = health.validate_image_quality(img_bgr, filename=file.filename)
+        valid_img = health.validate_image_quality(img_bgr, filename=file.filename, processor=processor)
 
         if not valid_img:
             raise INEApiError(
