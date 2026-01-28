@@ -417,6 +417,8 @@ async def parse_ine(
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
         return JSONResponse(content=response.model_dump(exclude_none=True))
+    except INEApiError:
+        raise
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
@@ -432,7 +434,7 @@ async def parse_ine(
         raise HTTPException(status_code=422, detail=err.model_dump(exclude_none=True)["error"])
 
     except HTTPException:
-        # Re-lanzar HTTPExceptions tal cual
+        # Re-lanzar HTTPExceptions
         raise
 
     except Exception as e:
@@ -440,7 +442,7 @@ async def parse_ine(
             status="error",
             error=INEErrorDetail(
                 type="internal_error",
-                message="Ocurrió un error inesperado procesando la credencial.",
+                message=f"Ocurrió un error inesperado procesando la credencial: {e}",
                 timestamp=str(datetime.datetime.now()),
             ),
         )
