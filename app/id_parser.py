@@ -684,8 +684,6 @@ class INEParser:
             # line_count+=1
         # Ordenar por score descendente → devolver el más probable
         candidatos.sort(key=lambda x: x[1], reverse=True)
-        print(candidatos)
-        print(CP_REGEX)
         if candidatos:
             data["codigo_postal"] = candidatos[0][0]
         else:
