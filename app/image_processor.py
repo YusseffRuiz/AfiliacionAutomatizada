@@ -348,11 +348,16 @@ class IDImageProcessor:
         if not isinstance(image, np.ndarray): # Se recibe un path en vez de la imagen
             image = self._load_bgr_from_path(path=image)
             # Convertimos a escala de grises para el análisis de gradientes
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            try:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            except Exception as e:
+                print("Error en la imagen: ", e)
         else:
             gray = image
-
-        h, w = gray.shape
+        try:
+            h, w = gray.shape
+        except Exception as e:
+            print("Error en la imagen: ", e)
         (cX, cY) = (int(w / 2.0), int(h / 2.0))
 
         # 1. Calcular FFT

@@ -181,7 +181,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
-        timestamp = str(time.time())
+        timestamp = str(datetime.datetime.now()),
     )
 
     # Log estructurado
@@ -211,7 +211,7 @@ async def generic_error_handler(request: Request, exc: Exception):
         type="internal_error",
         message="Ocurrió un error inesperado procesando la credencial.",
         detail=str(exc),
-        timestamp=str(time.time()),
+        timestamp=str(datetime.datetime.now()),
         context=ErrorContext(
             extra={"path": str(request.url)}
         ),
@@ -244,7 +244,7 @@ async def readyz():
     payload = {
         "status": status,
         "components": components,
-        "timestamp": time.time(),
+        "timestamp": datetime.datetime.now(),
     }
 
     status_code = 200 if all_ok else 503
@@ -285,7 +285,7 @@ async def parse_ine(
             detail={
                 "type": "unsupported_media_type",
                 "message": f"Formato no soportado: {file.content_type}. Use JPG, PNG, TIFF o PDF.",
-                "timestamp": time.time(),
+                "timestamp": datetime.datetime.now(),
             },
         )
 
@@ -314,7 +314,7 @@ async def parse_ine(
                 detail=valid_img["detail"],
                 context=valid_img["context"],
                 status_code=valid_img["status_code"],
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
             )
         print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
@@ -331,7 +331,7 @@ async def parse_ine(
                     "filename": file.filename,
                     "stage": "ocr",
                 },
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
                 status_code=422,
             )
         print("Done scoring")
@@ -398,7 +398,7 @@ async def parse_ine(
                 type="no_id_detected",
                 message=str(e),
                 suggestion="Asegúrese de que la credencial completa sea visible, con buena iluminación.",
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
             ),
         )
         raise HTTPException(status_code=422, detail=err.model_dump()["error"])
@@ -413,7 +413,7 @@ async def parse_ine(
             error=INEErrorDetail(
                 type="internal_error",
                 message="Ocurrió un error inesperado procesando la credencial.",
-                timestamp=str(time.time()),
+                timestamp=str(datetime.datetime.now()),
             ),
         )
         raise HTTPException(status_code=500, detail=err.model_dump()["error"])

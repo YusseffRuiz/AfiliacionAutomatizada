@@ -39,7 +39,7 @@ def process_with_yolo_v2(processor,
     best_score = -1
 
     crops = processor.get_document_crops(ine_imagen, max_candidates=max_candidates)
-
+    print("got crops")
     for i, crop in enumerate(crops):
         crop = processor.public_preprocess_for_ocr(crop, scale=2.5, h=18, searchwindowssize=21, clahe_clip_limit=3.4,
                                                    alpha_contrast=1.8, beta_brightness=-21)
