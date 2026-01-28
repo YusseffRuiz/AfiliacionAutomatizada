@@ -183,7 +183,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         context=ErrorContext(**exc.context) if exc.context else None,
         timestamp = exc.timestamp,
     )
-
+    print(payload)
     # Log estructurado
     logger.error(
         "INEApiError",
@@ -195,7 +195,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
             "path": str(request.url),
         },
     )
-
+    print(payload.model_dump())
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": payload.model_dump()},
