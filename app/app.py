@@ -318,7 +318,6 @@ async def parse_ine(
         print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
-        print(result)
         if 'error'in result:
             raise INEApiError(
                 type="ocr_error",
