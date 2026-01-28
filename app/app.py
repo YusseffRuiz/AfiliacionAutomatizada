@@ -319,9 +319,23 @@ async def parse_ine(
         print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
+        if hasattr(result, "error"):
+            raise INEApiError(
+                type="ocr_error",
+                message="No se pudo extraer texto legible de la credencial.",
+                detail=result['error'],
+                context={
+                    "ocr_engine": ocr_engine,
+                    "filename": file.filename,
+                    "stage": "ocr",
+                },
+                timestamp=str(datetime.datetime.now()),
+                status_code=422,
+            )
         score = int(result.get("score", 0))
         print("Done processing results", score)
         if score == 0:
+            print("Here is failing")
             raise INEApiError(
                 type="ocr_error",
                 message="No se pudo extraer texto legible de la credencial.",
