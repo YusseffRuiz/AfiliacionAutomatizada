@@ -107,15 +107,19 @@ class INEParser:
         if data["domicilio_lineas"]:
             data["domicilio"] = ", ".join(data["domicilio_lineas"])
 
-        my_place = places(data["codigo_postal"])
-        if len(my_place) > 0 and data["domicilio"]:
-            idx = 0
-            for i in range(len(my_place)):
-                if my_place[i].place.upper() in data["domicilio"]:
-                    idx = i
-            my_place = my_place[idx]
+        if len(data["codigo_postal"])>=4:
+            my_place = places(data["codigo_postal"])
+
+            if len(my_place) > 0 and data["domicilio"]:
+                idx = 0
+                for i in range(len(my_place)):
+                    if my_place[i].place.upper() in data["domicilio"]:
+                        idx = i
+                my_place = my_place[idx]
+            else:
+                my_place = my_place[0]
         else:
-            my_place = my_place[0]
+            my_place = " "
 
         # Construir nombre completo si se pudo extraer por partes
         parts = [
@@ -143,11 +147,11 @@ class INEParser:
             "nombre_completo": data["nombre_completo"],
             "sexo": ("HOMBRE" if data["sexo"] == "H" else "MUJER") if data.get("sexo") in ("H", "M") else None,
             "domicilio": data["domicilio"],
-            "codigo_postal": my_place.postal_code or data["codigo_postal"],
-            "estado": my_place.state or " ",
-            "municipio": my_place.municipality or " ",
-            "ciudad": my_place.city or " ",
-            "colonia": my_place.place or " ",
+            "codigo_postal": my_place.postal_code if not isinstance(my_place, str) else data.get("codigo_postal", ""),
+            "estado": my_place.state if not isinstance(my_place, str) else "",
+            "municipio": my_place.municipality if not isinstance(my_place, str) else "",
+            "ciudad": my_place.city if not isinstance(my_place, str) else "",
+            "colonia": my_place.place if not isinstance(my_place, str) else "",
             "calle": self.init_dom,
             "clave_elector": data["clave_elector"],
             "curp": data["curp"],
@@ -680,7 +684,12 @@ class INEParser:
             # line_count+=1
         # Ordenar por score descendente → devolver el más probable
         candidatos.sort(key=lambda x: x[1], reverse=True)
-        data["codigo_postal"] = candidatos[0][0]
+        print(candidatos)
+        print(CP_REGEX)
+        if candidatos:
+            data["codigo_postal"] = candidatos[0][0]
+        else:
+            data["codigo_postal"] = " "
 
     # ------- Parsing infiriendo por curp --------
 
@@ -727,8 +736,10 @@ class INEParser:
 
     @staticmethod
     def _verify_curp(value:str) -> bool:
+        if not value or not isinstance(value, str):
+            return False
         try:
-            c = CURP(value)
+            CURP(value)
             return True
-        except CURPValueError:
+        except (CURPValueError, TypeError):
             return False
