@@ -47,8 +47,8 @@ class INEApiError(Exception):
         message: str,
         detail: Optional[str] = None,
         context: Optional[dict] = None,
-        status_code: int = 400,
         timestamp: Optional[str] = None,
+        status_code: int = 400,
     ):
         self.type = type
         self.message = message
@@ -339,8 +339,8 @@ async def parse_ine(
                 message="No se pudo extraer texto legible de la credencial.",
                 detail=result['error'],
                 context={
-                    "ocr_engine": ocr_engine,
-                    "filename": file.filename,
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
                     "stage": "ocr",
                 },
                 timestamp=str(datetime.datetime.now()),
@@ -355,8 +355,8 @@ async def parse_ine(
                 message="No se pudo extraer texto legible de la credencial.",
                 detail="El motor OCR devolvió texto vacío o solo ruido.",
                 context={
-                    "ocr_engine": ocr_engine,
-                    "filename": file.filename,
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
                     "stage": "ocr",
                 },
                 timestamp=str(datetime.datetime.now()),
