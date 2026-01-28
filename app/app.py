@@ -181,7 +181,7 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
-        timestamp = str(datetime.datetime.now()),
+        timestamp = exc.timestamp,
     )
 
     # Log estructurado
@@ -285,7 +285,7 @@ async def parse_ine(
             detail={
                 "type": "unsupported_media_type",
                 "message": f"Formato no soportado: {file.content_type}. Use JPG, PNG, TIFF o PDF.",
-                "timestamp": datetime.datetime.now(),
+                "timestamp": str(datetime.datetime.now()),
             },
         )
 
