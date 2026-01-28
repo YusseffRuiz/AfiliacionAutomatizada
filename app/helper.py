@@ -57,6 +57,7 @@ def process_with_yolo_v2(processor,
             config = r"--psm 6 --oem 1 -c preserve_interword_spaces=1"
             texto = pytesseract.image_to_string(crop, lang="spa", config=config)
             data_full = extra_tesseract_process(crop_image=crop, processor=processor, parser=parser, texto_full=texto)
+            print("For any reason, agent was not gathered")
 
 
         score = score_parse_result(data_full)
@@ -65,7 +66,7 @@ def process_with_yolo_v2(processor,
         if score > best_score:
             best_score = score
             best_data = data_full
-
+        print("got best data")
         # Si ya estamos bastante bien, podemos parar
         if score >= score_ok_threshold:
             best_data["attempt"] = f"yolo_candidate_{i}"
