@@ -177,30 +177,42 @@ logging.basicConfig(
 
 @app.exception_handler(INEApiError)
 async def ine_api_error_handler(request: Request, exc: INEApiError):
-    payload = ErrorPayload(
-        type=exc.type,
-        message=exc.message,
-        detail=exc.detail,
-        context=ErrorContext(**exc.context) if exc.context else None,
-        timestamp = exc.timestamp,
-    )
-    print(payload)
-    # Log estructurado
-    logger.error(
-        "INEApiError",
-        extra={
-            "error_type": exc.type,
-            "message": exc.message,
-            "detail": exc.detail,
-            "context": exc.context,
-            "path": str(request.url),
-        },
-    )
-    print(payload.model_dump())
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": payload.model_dump(exclude_none=True)},
-    )
+    try:
+        payload = ErrorPayload(
+            type=exc.type,
+            message=exc.message,
+            detail=exc.detail,
+            context=ErrorContext(**exc.context) if exc.context else None,
+            timestamp = exc.timestamp,
+        )
+        print(payload)
+        # Log estructurado
+        logger.error(
+            "INEApiError",
+            extra={
+                "error_type": exc.type,
+                "message": exc.message,
+                "detail": exc.detail,
+                "context": exc.context,
+                "path": str(request.url),
+            },
+        )
+        print(payload.model_dump())
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": payload.model_dump(exclude_none=True)},
+        )
+    except Exception as e:
+        # ESTO APARECERÁ EN TU CONSOLA Y NOS DARÁ LA RESPUESTA
+        print(f"CRITICAL ERROR IN HANDLER: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+        # Fallback de emergencia para que no de 500 mientras debugueamos
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"type": "handler_failure", "message": str(e)}}
+        )
 
 
 @app.exception_handler(Exception)
@@ -321,7 +333,7 @@ async def parse_ine(
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
         print(result)
-        if hasattr(result, "error"):
+        if 'error'in result:
             raise INEApiError(
                 type="ocr_error",
                 message="No se pudo extraer texto legible de la credencial.",
