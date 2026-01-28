@@ -244,7 +244,7 @@ async def readyz():
     payload = {
         "status": status,
         "components": components,
-        "timestamp": datetime.datetime.now(),
+        "timestamp": str(datetime.datetime.now()),
     }
 
     status_code = 200 if all_ok else 503
@@ -318,7 +318,7 @@ async def parse_ine(
             )
         print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
-        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=img_bgr)
+        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
         print("Done processing results")
         score = int(result.get("score", 0))
         if score == 0:
