@@ -1,12 +1,13 @@
 from pathlib import Path
-import logging
+
 import cv2
 import numpy as np
 from pdf2image import convert_from_path
 from ultralytics import YOLO
+from PIL import Image
 import uuid
 
-logger = logging.getLogger("ine_api.image_processor")
+
 
 class IDImageProcessor:
     """
@@ -31,23 +32,22 @@ class IDImageProcessor:
         self.conf_threshold = conf_threshold
         self.save_debug_images = save_debug_images
         self.debug_dir = Path(debug_dir)
+        self._blurry_threshold = 100
 
         if self.save_debug_images:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------- API pública ----------
-    def get_document_crops(self, bgr, max_candidates: int = 3) -> list[np.ndarray]:
+    def get_document_crops(self, path: str, page: int = 0, max_candidates: int = 3) -> list[np.ndarray]:
         """
         Devuelve una lista de recortes (crops) de los bounding boxes
         detectados por YOLO, ordenados por confianza descendente.
         """
+        bgr = self._load_bgr_from_path(path=path, page=page)
 
         results = self.model(bgr, conf=self.conf_threshold, verbose=False)
 
-        logger.info(f"stage=yolo_candidates count={len(results)}")
-
         if not results or len(results[0].boxes) == 0:
-            logger.warning("stage=yolo_no_boxes")
             raise RuntimeError("YOLOv8 no encontró ninguna credencial en la imagen.")
 
         boxes = results[0].boxes
@@ -80,9 +80,8 @@ class IDImageProcessor:
                 crops.append(crop)
 
         if not crops:
-            logger.exception(f"stage=No crops found")
             raise RuntimeError("No se pudieron obtener recortes válidos.")
-        logger.info(f"stage=crop0 {self._img_info(crops[0], 'crop0')}")
+
         return crops
 
     def process_file(self, path: str, page: int = 0) -> np.ndarray:
@@ -146,6 +145,9 @@ class IDImageProcessor:
         preprocessed = self._preprocess_for_ocr(cropped, scale=1.0, h=15, searchwindowssize=7)
 
         return preprocessed
+
+    def public_load_image(self, path: str, page: int=0):
+        return self._load_bgr_from_path(path, page=page)
 
     def public_preprocess_for_ocr(self,bgr: np.ndarray=None, path: str=None, page: int=0, scale: float=3.0, h = 28,
                                   searchwindowssize=21, clahe_clip_limit=3.6, alpha_contrast=1.9,
@@ -337,10 +339,41 @@ class IDImageProcessor:
             y2 = min(h, h - y2)
             return bgr[y1:y2, x1:x2]
 
-    def public_load_image(self, path: str, page: int=0):
-        return self._load_bgr_from_path(path, page=page)
-
     # ---------- Métodos internos ----------
+    def blurry_detected(self, image) -> tuple[bool, float]:
+        """
+        Detecta si la imagen es borrosa usando la Transformada de Fourier.
+        Retorna: (True si es borrosa, valor de la varianza)
+        """
+        if not isinstance(image, np.ndarray): # Se recibe un path en vez de la imagen
+            image = self._load_bgr_from_path(path=image)
+            # Convertimos a escala de grises para el análisis de gradientes
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+
+        h, w = gray.shape
+        (cX, cY) = (int(w / 2.0), int(h / 2.0))
+
+        # 1. Calcular FFT
+        fft = np.fft.fft2(gray)
+        fft_shift = np.fft.fftshift(fft)  # Centrar las frecuencias bajas
+
+        # 2. Aplicar un filtro de paso alto (poner en cero las frecuencias bajas del centro)
+        # Esto elimina la influencia de las áreas lisas de la INE
+        fft_shift[
+            cY - self._blurry_threshold:cY + self._blurry_threshold, cX - self._blurry_threshold:cX + self._blurry_threshold] = 0
+
+        # 3. Regresar al dominio espacial (Inversa de FFT)
+        fft_ishift = np.fft.ifftshift(fft_shift)
+        recon = np.abs(np.fft.ifft2(fft_ishift))
+
+        # 4. Calcular la magnitud media de las frecuencias altas
+        # Una imagen borrosa tendrá este valor muy bajo
+        valor_nitidez = 20 * np.log(np.mean(recon) + 1e-7)  # Escala logarítmica
+        # Umbral sugerido: < 10 es borroso
+        return valor_nitidez < 10, valor_nitidez
+
     def _load_bgr_from_path(self, path: str, page: int = 0) -> np.ndarray:
         """
         Carga cualquier archivo soportado (imagen o PDF) y regresa BGR.
@@ -355,7 +388,7 @@ class IDImageProcessor:
         else:
             supported = " ".join(self.SUPPORTED_IMAGE_EXT)
             raise ValueError(f"Formato no soportado: {ext}, favor de usar {supported} o pdf")
-        logger.info(f"stage=loaded {self._img_info(bgr, 'bgr')}")
+
         return bgr
 
     @staticmethod
@@ -363,7 +396,6 @@ class IDImageProcessor:
         """Carga JPG/PNG en BGR (OpenCV)."""
         img = cv2.imread(str(path))
         if img is None:
-            logger.info(f"No se pudo leer la imagen con OpenCV: {path}")
             raise ValueError(f"No se pudo leer la imagen: {path}")
         return img
 
@@ -394,7 +426,7 @@ class IDImageProcessor:
         """
         # YOLO espera imagen en formato estándar (BGR está bien, ultralytics lo maneja)
         results = self.model(bgr, conf=self.conf_threshold, verbose=False)
-        logger.info(f"stage=yolo_candidates count={len(results)}")
+
         if not results or len(results[0].boxes) == 0:
             raise RuntimeError("YOLOv8 no encontró ninguna credencial en la imagen.")
 
@@ -428,8 +460,8 @@ class IDImageProcessor:
 
         return cropped
 
-
-    def _preprocess_for_ocr(self, bgr: np.ndarray, scale=3.0, h = 32, searchwindowssize=21, clahe_clip_limit=2.0,
+    @staticmethod
+    def _preprocess_for_ocr(bgr: np.ndarray, scale=3.0, h = 32, searchwindowssize=21, clahe_clip_limit=2.0,
                             alpha_contrast: float = 1.7, beta_brightness: int = -20,
                             ) -> np.ndarray:
         """
@@ -470,11 +502,10 @@ class IDImageProcessor:
         h_img, w_img = gray.shape
         gray = cv2.resize(
             gray,
-
             (int(w_img * scale), int(h_img * scale)),
             interpolation=cv2.INTER_CUBIC,
         )
-        logger.info(f"stage=preprocess_out {self._img_info(gray, 'gray')}")
+
         return gray
 
     # ---------- Utilidades de debug ----------
@@ -502,15 +533,3 @@ class IDImageProcessor:
 
         cv2.imwrite(str(out_path), bgr)
         return debug_id
-
-    # ------------- Metodos de Debug -------------------
-    @staticmethod
-    def _img_info(img, label="img"):
-        if img is None:
-            return f"{label}=None"
-        try:
-            h, w = img.shape[:2]
-            ch = 1 if len(img.shape) == 2 else img.shape[2]
-            return f"{label}.shape=({h},{w},{ch}) dtype={img.dtype} min={img.min()} max={img.max()}"
-        except Exception:
-            return f"{label}=<uninspectable>"

@@ -51,12 +51,17 @@ def process_with_yolo_v2(processor,
     """
     best_data = None
     best_score = -1
-
+    is_blurry, nitidez = processor.blurry_detected(image=ine_imagen)
+    if is_blurry:
+        return {"error": "La imagen esta muy borrosa, lejana o dañada"}
     crops = processor.get_document_crops(ine_imagen, page=page, max_candidates=max_candidates)
 
     for i, crop in enumerate(crops):
         crop = processor.public_preprocess_for_ocr(crop, scale=2.5, h=18, searchwindowssize=21, clahe_clip_limit=3.4,
                                                    alpha_contrast=1.8, beta_brightness=-21)
+        is_blurry, nitidez = processor.blurry_detected(image=crop)
+        if is_blurry:
+            return {"error": "La imagen esta muy borrosa, lejana o dañada"}
         plt.title("Imagen recortada")
         plt.axis("off")
         plt.imshow(crop)
@@ -205,9 +210,9 @@ def ine_pipeline(processor, parser, ine_imagen, agent=None, page=0):
 
 
 if __name__ == "__main__":
-    # ine_imagen = "imagenes_prueba/INE_13.jpg"
-    ine_imagen = ("imagenes_prueba/INE_14.jpeg")
-    ine_imagen = ("imagenes_prueba/ineMedium.png")
+    # ine_imagen = "imagenes_prueba/INE_1.jpg"
+    # ine_imagen = ("imagenes_prueba/INE_8.jpeg")
+    # ine_imagen = ("imagenes_prueba/ineMedium.png")
     # ine_imagen = "imagenes_prueba/INEGloria.pdf"
     # ine_imagen = "imagenes_prueba/IneAdan.pdf"
     #

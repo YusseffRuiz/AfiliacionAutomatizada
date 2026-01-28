@@ -32,6 +32,7 @@ class IDImageProcessor:
         self.conf_threshold = conf_threshold
         self.save_debug_images = save_debug_images
         self.debug_dir = Path(debug_dir)
+        self._blurry_threshold = 100
 
         if self.save_debug_images:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
@@ -339,6 +340,40 @@ class IDImageProcessor:
             return bgr[y1:y2, x1:x2]
 
     # ---------- Métodos internos ----------
+    def blurry_detected(self, image) -> tuple[bool, float]:
+        """
+        Detecta si la imagen es borrosa usando la Transformada de Fourier.
+        Retorna: (True si es borrosa, valor de la varianza)
+        """
+        if not isinstance(image, np.ndarray): # Se recibe un path en vez de la imagen
+            image = self._load_bgr_from_path(path=image)
+            # Convertimos a escala de grises para el análisis de gradientes
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+
+        h, w = gray.shape
+        (cX, cY) = (int(w / 2.0), int(h / 2.0))
+
+        # 1. Calcular FFT
+        fft = np.fft.fft2(gray)
+        fft_shift = np.fft.fftshift(fft)  # Centrar las frecuencias bajas
+
+        # 2. Aplicar un filtro de paso alto (poner en cero las frecuencias bajas del centro)
+        # Esto elimina la influencia de las áreas lisas de la INE
+        fft_shift[
+            cY - self._blurry_threshold:cY + self._blurry_threshold, cX - self._blurry_threshold:cX + self._blurry_threshold] = 0
+
+        # 3. Regresar al dominio espacial (Inversa de FFT)
+        fft_ishift = np.fft.ifftshift(fft_shift)
+        recon = np.abs(np.fft.ifft2(fft_ishift))
+
+        # 4. Calcular la magnitud media de las frecuencias altas
+        # Una imagen borrosa tendrá este valor muy bajo
+        valor_nitidez = 20 * np.log(np.mean(recon) + 1e-7)  # Escala logarítmica
+        # Umbral sugerido: < 10 es borroso
+        return valor_nitidez < 10, valor_nitidez
+
     def _load_bgr_from_path(self, path: str, page: int = 0) -> np.ndarray:
         """
         Carga cualquier archivo soportado (imagen o PDF) y regresa BGR.

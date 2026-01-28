@@ -43,6 +43,10 @@ def process_with_yolo_v2(processor,
     for i, crop in enumerate(crops):
         crop = processor.public_preprocess_for_ocr(crop, scale=2.5, h=18, searchwindowssize=21, clahe_clip_limit=3.4,
                                                    alpha_contrast=1.8, beta_brightness=-21)
+        is_blurry, nitidez = processor.blurry_detected(image=crop)
+
+        if is_blurry:
+            return {"error": "La imagen esta muy borrosa, lejana o dañada"}
 
         if agent is not None:
             texto = agent.process_local_image(crop)
