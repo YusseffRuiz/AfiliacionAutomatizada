@@ -274,6 +274,7 @@ async def parse_ine(
     # 1) Validar tipo de archivo
     allowed_types = {
         "image/jpeg",
+        "image/jpg",
         "image/png",
         "image/tiff",
         "application/pdf",
