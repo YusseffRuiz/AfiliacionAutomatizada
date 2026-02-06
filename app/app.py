@@ -277,7 +277,7 @@ async def parse_ine(
     source: Optional[str] = Form(None),
     return_debug: bool = Form(False),
     page: int = Form(0),
-    ocr_engine: str = "mistral",
+    ocr_engine: str = "paddle",
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
