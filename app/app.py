@@ -13,6 +13,7 @@ import tempfile
 import shutil
 import time
 import datetime
+from fastapi.middleware.cors import CORSMiddleware
 
 # IMPORTA tu lógica existente
 from .image_processor import IDImageProcessor
@@ -147,6 +148,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
+origins_list = ["*"] # Es importante especificar las URL del origen, es decir, de sybi
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins_list,           # Permite el Access-Control-Allow-Origin
+    allow_credentials=True,
+    allow_methods=["*"],           # Permite todos los métodos (GET, POST, etc.)
+    allow_headers=["*"],           # Permite todos los headers
+)
+
 processor = IDImageProcessor(
     yolo_model_path="models/YOLOV8_INE_V2.pt",  # ajusta al modelo que estés usando
     conf_threshold=0.4,
@@ -274,6 +286,7 @@ async def parse_ine(
     # 1) Validar tipo de archivo
     allowed_types = {
         "image/jpeg",
+        "image/jpg",
         "image/png",
         "image/tiff",
         "application/pdf",
