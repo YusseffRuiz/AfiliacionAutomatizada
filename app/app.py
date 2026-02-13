@@ -194,6 +194,7 @@ API_KEYS = os.getenv("MAIN_API_KEYS", "").split(",")
 
 async def validar_api_key(header_key: str = Security(api_key_header)):
     if header_key and header_key in API_KEYS:
+        print("Found key!")
         return header_key
     raise HTTPException(
         status_code=HTTP_403_FORBIDDEN,
@@ -287,9 +288,9 @@ async def readyz():
         500: {"model": INEErrorResponse},
     },
 )
-@limiter.limit("10/minute")  # Limite de 10 peticiones por minuto por IP
+# @limiter.limit("10/minute")  # Limite de 10 peticiones por minuto por IP
 async def parse_ine(
-    request: Request,
+    # request: Request,
     file: UploadFile = File(...),
     card_id: Optional[str] = "1",
     token: str = Depends(validar_api_key),
@@ -318,6 +319,7 @@ async def parse_ine(
 
     try:
         # 2) Guardar archivo temporalmente
+        print("Starting")
 
         suffix = Path(file.filename).suffix if file.filename else ""
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
