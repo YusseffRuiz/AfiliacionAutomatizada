@@ -304,6 +304,7 @@ async def parse_ine(
     # 1) Validar tipo de archivo
     allowed_types = {
         "image/jpeg",
+        "image/jpg",
         "image/png",
         "image/tiff",
         "application/pdf",
@@ -314,6 +315,7 @@ async def parse_ine(
             detail={
                 "type": "unsupported_media_type",
                 "message": f"Formato no soportado: {file.content_type}. Use JPG, PNG, TIFF o PDF.",
+                "timestamp": str(datetime.datetime.now()),
             },
         )
 
@@ -334,7 +336,7 @@ async def parse_ine(
 
         # 3) Validacion de imagen
         img_bgr = processor.public_load_image(str(tmp_path), page=page)
-        valid_img = health.validate_image_quality(img_bgr, filename=file.filename)
+        valid_img = health.validate_image_quality(img_bgr, filename=file.filename, processor=processor)
 
         if not valid_img:
             raise INEApiError(
@@ -343,11 +345,24 @@ async def parse_ine(
                 detail=valid_img["detail"],
                 context=valid_img["context"],
                 status_code=valid_img["status_code"],
+                timestamp=str(datetime.datetime.now()),
             )
 
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
-        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=img_bgr)
-
+        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
+        if 'error'in result:
+            raise INEApiError(
+                type="ocr_error",
+                message="No se pudo extraer texto legible de la credencial.",
+                detail=result['error'],
+                context={
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
+                    "stage": "ocr",
+                },
+                timestamp=str(datetime.datetime.now()),
+                status_code=422,
+            )
         score = int(result.get("score", 0))
         if score == 0:
             raise INEApiError(
@@ -355,10 +370,11 @@ async def parse_ine(
                 message="No se pudo extraer texto legible de la credencial.",
                 detail="El motor OCR devolvió texto vacío o solo ruido.",
                 context={
-                    "ocr_engine": ocr_engine,
-                    "filename": file.filename,
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
                     "stage": "ocr",
                 },
+                timestamp=str(datetime.datetime.now()),
                 status_code=422,
             )
 
@@ -414,7 +430,9 @@ async def parse_ine(
         )
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
-        return JSONResponse(content=response.model_dump())
+        return JSONResponse(content=response.model_dump(exclude_none=True))
+    except INEApiError:
+        raise
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
@@ -424,9 +442,10 @@ async def parse_ine(
                 type="no_id_detected",
                 message=str(e),
                 suggestion="Asegúrese de que la credencial completa sea visible, con buena iluminación.",
+                timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=422, detail=err.dict()["error"])
+        raise HTTPException(status_code=422, detail=err.model_dump(exclude_none=True)["error"])
 
     except HTTPException:
         # Re-lanzar HTTPExceptions tal cual
@@ -438,9 +457,10 @@ async def parse_ine(
             error=INEErrorDetail(
                 type="internal_error",
                 message="Ocurrió un error inesperado procesando la credencial.",
+                timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=500, detail=err.dict()["error"])
+        raise HTTPException(status_code=500, detail=err.model_dump(exclude_none=True)["error"])
 
     finally:
         # 6) Borrar archivo temporal
