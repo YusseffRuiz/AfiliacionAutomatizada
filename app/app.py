@@ -3,8 +3,9 @@ import os
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Security, Depends
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -13,11 +14,17 @@ import shutil
 import time
 import datetime
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.status import HTTP_403_FORBIDDEN
 
 # IMPORTA tu lógica existente
 from .image_processor import IDImageProcessor
 from .id_parser import INEParser
-from .helper import process_with_yolo_v2  # donde tengas esta función
+from .helper import process_with_yolo_v2
 from .ocr_agent import MistralOCRAgent, PaddleOCREngine
 from .utils import health, storage
 
@@ -133,13 +140,23 @@ def build_warnings(result: dict) -> List[str]:
 
 
 # ----------------- Inicializar FastAPI y tus objetos -----------------
-
+# Rate limiter, para evitar un ataque multiple y se bloquee tras ciertos intentos
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="INE OCR API",
     description="Servicio para extraer datos de credenciales INE",
     version="1.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 3. Configuración de API Key
+API_KEY_NAME = "MAIN-API-KEY"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
 
 origins_list = ["*"] # Es importante especificar las URL del origen, es decir, de sybi
 
@@ -151,6 +168,10 @@ app.add_middleware(
     allow_methods=["*"],           # Permite todos los métodos (GET, POST, etc.)
     allow_headers=["*"],           # Permite todos los headers
 )
+
+# Middleware para confiar en los headers que envía IIS
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="127.0.0.1")
+
 
 processor = IDImageProcessor(
     yolo_model_path="models/YOLOV8_INE_V2.pt",  # ajusta al modelo que estés usando
@@ -167,6 +188,17 @@ agent_paddle = PaddleOCREngine(lang="es")
 if not api_key:
     raise ValueError("Please set the MISTRAL_API_KEY environment variable.")
 agent_mistral = MistralOCRAgent(api_key=api_key)
+
+
+API_KEYS = os.getenv("MAIN_API_KEYS", "").split(",")
+
+async def validar_api_key(header_key: str = Security(api_key_header)):
+    if header_key and header_key in API_KEYS:
+        return header_key
+    raise HTTPException(
+        status_code=HTTP_403_FORBIDDEN,
+        detail="Acceso denegado: API Key inválida o ausente"
+    )
 
 
 # -----------------Error Handling ---------------------
@@ -255,11 +287,11 @@ async def readyz():
         500: {"model": INEErrorResponse},
     },
 )
+@limiter.limit("10/minute")  # Limite de 10 peticiones por minuto por IP
 async def parse_ine(
     file: UploadFile = File(...),
     card_id: Optional[str] = "1",
-    source: Optional[str] = Form(None),
-    return_debug: bool = Form(False),
+    token: str = Depends(validar_api_key),
     page: int = Form(0),
     ocr_engine: str = "paddle",
 ):
