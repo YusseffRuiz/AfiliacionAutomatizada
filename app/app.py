@@ -1,12 +1,12 @@
 import logging
 import os
-import sys
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Security, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import tempfile
@@ -14,23 +14,27 @@ import shutil
 import time
 import datetime
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.status import HTTP_403_FORBIDDEN
 
 # IMPORTA tu lógica existente
 from .image_processor import IDImageProcessor
 from .id_parser import INEParser
-from .helper import process_with_yolo_v2  # donde tengas esta función
+from .helper import process_with_yolo_v2
 from .ocr_agent import MistralOCRAgent, PaddleOCREngine
 from .utils import health, storage
 
 # ----------------- Modelos Pydantic de respuesta -----------------
 class ErrorContext(BaseModel):
-    model_config = ConfigDict(extra='allow')
     ocr_engine: Optional[str] = None
     attempt: Optional[str] = None
     filename: Optional[str] = None
     stage: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
-    timestamp: Optional[str] = None
 
 
 class ErrorPayload(BaseModel):
@@ -38,7 +42,6 @@ class ErrorPayload(BaseModel):
     message: str               # mensaje entendible
     detail: Optional[str] = None  # detalle técnico más específico
     context: Optional[ErrorContext] = None
-    timestamp: Optional[str] = None
 
 class INEApiError(Exception):
     def __init__(
@@ -48,7 +51,6 @@ class INEApiError(Exception):
         message: str,
         detail: Optional[str] = None,
         context: Optional[dict] = None,
-        timestamp: Optional[str] = None,
         status_code: int = 400,
     ):
         self.type = type
@@ -56,7 +58,6 @@ class INEApiError(Exception):
         self.detail = detail
         self.context = context or {}
         self.status_code = status_code
-        self.timestamp = timestamp
         super().__init__(message)
 
 class INEData(BaseModel):
@@ -98,7 +99,6 @@ class INEErrorDetail(BaseModel):
     type: str
     message: str
     suggestion: Optional[str] = None
-    timestamp: Optional[str] = None
 
 
 class INEErrorResponse(BaseModel):
@@ -140,13 +140,23 @@ def build_warnings(result: dict) -> List[str]:
 
 
 # ----------------- Inicializar FastAPI y tus objetos -----------------
-
+# Rate limiter, para evitar un ataque multiple y se bloquee tras ciertos intentos
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="INE OCR API",
     description="Servicio para extraer datos de credenciales INE",
     version="1.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 3. Configuración de API Key
+API_KEY_NAME = "MAIN-API-KEY"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
 
 origins_list = ["*"] # Es importante especificar las URL del origen, es decir, de sybi
 
@@ -158,6 +168,10 @@ app.add_middleware(
     allow_methods=["*"],           # Permite todos los métodos (GET, POST, etc.)
     allow_headers=["*"],           # Permite todos los headers
 )
+
+# Middleware para confiar en los headers que envía IIS
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="127.0.0.1")
+
 
 processor = IDImageProcessor(
     yolo_model_path="models/YOLOV8_INE_V2.pt",  # ajusta al modelo que estés usando
@@ -176,16 +190,19 @@ if not api_key:
 agent_mistral = MistralOCRAgent(api_key=api_key)
 
 
+API_KEYS = os.getenv("MAIN_API_KEYS", "").split(",")
+
+async def validar_api_key(header_key: str = Security(api_key_header)):
+    if header_key and header_key in API_KEYS:
+        return header_key
+    raise HTTPException(
+        status_code=HTTP_403_FORBIDDEN,
+        detail="Acceso denegado: API Key inválida o ausente"
+    )
+
+
 # -----------------Error Handling ---------------------
 logger = logging.getLogger("ine_api")
-
-logging.basicConfig(
-    level=logging.INFO,  # ⬅️ IMPORTANTE
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ],
-)
 
 @app.exception_handler(INEApiError)
 async def ine_api_error_handler(request: Request, exc: INEApiError):
@@ -194,22 +211,23 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
-        timestamp = exc.timestamp,
     )
+
     # Log estructurado
     logger.error(
         "INEApiError",
         extra={
             "error_type": exc.type,
-            "error_message": exc.message,
-            "error_detail": exc.detail,
-            "error_context": exc.context,
+            "message": exc.message,
+            "detail": exc.detail,
+            "context": exc.context,
             "path": str(request.url),
         },
     )
+
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": payload.model_dump(exclude_none=True)},
+        content={"error": payload.dict()},
     )
 
 
@@ -222,7 +240,6 @@ async def generic_error_handler(request: Request, exc: Exception):
         type="internal_error",
         message="Ocurrió un error inesperado procesando la credencial.",
         detail=str(exc),
-        timestamp=str(datetime.datetime.now()),
         context=ErrorContext(
             extra={"path": str(request.url)}
         ),
@@ -230,7 +247,7 @@ async def generic_error_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"error": payload.model_dump(exclude_none=True)},
+        content={"error": payload.dict()},
     )
 
 # ----------------- Endpoint principal -----------------
@@ -255,7 +272,6 @@ async def readyz():
     payload = {
         "status": status,
         "components": components,
-        "timestamp": str(datetime.datetime.now()),
     }
 
     status_code = 200 if all_ok else 503
@@ -271,11 +287,11 @@ async def readyz():
         500: {"model": INEErrorResponse},
     },
 )
+@limiter.limit("10/minute")  # Limite de 10 peticiones por minuto por IP
 async def parse_ine(
     file: UploadFile = File(...),
-    card_id: Optional[str] = "1234",
-    source: Optional[str] = Form(None),
-    return_debug: bool = Form(False),
+    card_id: Optional[str] = "1",
+    token: str = Depends(validar_api_key),
     page: int = Form(0),
     ocr_engine: str = "paddle",
 ):
@@ -286,7 +302,6 @@ async def parse_ine(
     # 1) Validar tipo de archivo
     allowed_types = {
         "image/jpeg",
-        "image/jpg",
         "image/png",
         "image/tiff",
         "application/pdf",
@@ -297,7 +312,6 @@ async def parse_ine(
             detail={
                 "type": "unsupported_media_type",
                 "message": f"Formato no soportado: {file.content_type}. Use JPG, PNG, TIFF o PDF.",
-                "timestamp": str(datetime.datetime.now()),
             },
         )
 
@@ -317,7 +331,7 @@ async def parse_ine(
 
         # 3) Validacion de imagen
         img_bgr = processor.public_load_image(str(tmp_path), page=page)
-        valid_img = health.validate_image_quality(img_bgr, filename=file.filename, processor=processor)
+        valid_img = health.validate_image_quality(img_bgr, filename=file.filename)
 
         if not valid_img:
             raise INEApiError(
@@ -326,40 +340,25 @@ async def parse_ine(
                 detail=valid_img["detail"],
                 context=valid_img["context"],
                 status_code=valid_img["status_code"],
-                timestamp=str(datetime.datetime.now()),
             )
-        print("Valid image")
+
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
-        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
-        if 'error'in result:
-            raise INEApiError(
-                type="ocr_error",
-                message="No se pudo extraer texto legible de la credencial.",
-                detail=result['error'],
-                context={
-                    "ocr_engine": str(ocr_engine),
-                    "filename": str(file.filename),
-                    "stage": "ocr",
-                },
-                timestamp=str(datetime.datetime.now()),
-                status_code=422,
-            )
+        result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=img_bgr)
+
         score = int(result.get("score", 0))
-        print("Done processing results", score)
         if score == 0:
             raise INEApiError(
                 type="ocr_error",
                 message="No se pudo extraer texto legible de la credencial.",
                 detail="El motor OCR devolvió texto vacío o solo ruido.",
                 context={
-                    "ocr_engine": str(ocr_engine),
-                    "filename": str(file.filename),
+                    "ocr_engine": ocr_engine,
+                    "filename": file.filename,
                     "stage": "ocr",
                 },
-                timestamp=str(datetime.datetime.now()),
                 status_code=422,
             )
-        print("Done scoring")
+
         ## 4.5) Guardar imagen en disco para futuros entrenamientos.
         try:
             storage.save_valid_image(  # Guardado de la imagen en storage
@@ -369,7 +368,6 @@ async def parse_ine(
                 card_id=card_id,
                 user_name=result.get("nombre_completo"),
             )
-            print("Correct storing")
         except Exception as e:
             # No queremos que falle toda la API solo porque no se pudo guardar
             logger.warning(
@@ -413,9 +411,7 @@ async def parse_ine(
         )
 
         response = INEOKResponse(status="ok", data=data, meta=meta)
-        return JSONResponse(content=response.model_dump(exclude_none=True))
-    except INEApiError:
-        raise
+        return JSONResponse(content=response.model_dump())
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
@@ -425,13 +421,12 @@ async def parse_ine(
                 type="no_id_detected",
                 message=str(e),
                 suggestion="Asegúrese de que la credencial completa sea visible, con buena iluminación.",
-                timestamp=str(datetime.datetime.now()),
             ),
         )
-        raise HTTPException(status_code=422, detail=err.model_dump(exclude_none=True)["error"])
+        raise HTTPException(status_code=422, detail=err.dict()["error"])
 
     except HTTPException:
-        # Re-lanzar HTTPExceptions
+        # Re-lanzar HTTPExceptions tal cual
         raise
 
     except Exception as e:
@@ -439,11 +434,10 @@ async def parse_ine(
             status="error",
             error=INEErrorDetail(
                 type="internal_error",
-                message=f"Ocurrió un error inesperado procesando la credencial: {e}",
-                timestamp=str(datetime.datetime.now()),
+                message="Ocurrió un error inesperado procesando la credencial.",
             ),
         )
-        raise HTTPException(status_code=500, detail=err.model_dump(exclude_none=True)["error"])
+        raise HTTPException(status_code=500, detail=err.dict()["error"])
 
     finally:
         # 6) Borrar archivo temporal
