@@ -350,7 +350,7 @@ async def parse_ine(
             raise INEApiError(
                 type="ocr_error",
                 message="No se pudo extraer texto legible de la credencial.",
-                detail="El motor OCR devolvió texto vacío o solo ruido.",
+                detail="El motor OCR no encontró el campo de la vigencia",
                 context={
                     "ocr_engine": str(ocr_engine),
                     "filename": str(file.filename),
