@@ -360,6 +360,46 @@ async def parse_ine(
                 status_code=422,
             )
         print("Done scoring")
+        valid_ine_expiracy = result.get("vigencia", "0000")
+        if valid_ine_expiracy == "0000":
+            raise INEApiError(type="Error en Vigencia",
+                message="No se pudo extraer la vigencia de la INE, volver a tomar la fotografia",
+                detail="El motor OCR devolvió texto vacío o solo ruido.",
+                context={
+                    "ocr_engine": str(ocr_engine),
+                    "filename": str(file.filename),
+                    "stage": "Verificacion",
+                },
+                timestamp=str(datetime.datetime.now()),
+                status_code=422,
+            )
+        else:
+            try:
+                valid_ine_expiracy = int(valid_ine_expiracy[-4:]) # Obtenemos los ultimos 4 digitos
+            except ValueError:
+                raise INEApiError(type="Error en Vigencia",
+                                  message="No se pudo extraer la vigencia de la INE, volver a tomar la fotografia",
+                                  detail="El motor OCR devolvió texto vacío o solo ruido.",
+                                  context={
+                                      "ocr_engine": str(ocr_engine),
+                                      "filename": str(file.filename),
+                                      "stage": "Verificacion",
+                                  },
+                                  timestamp=str(datetime.datetime.now()),
+                                  status_code=422,
+                                  )
+            if valid_ine_expiracy < int(datetime.date.today().year):
+                raise INEApiError(type="Error en Vigencia",
+                                  message="INE caduca",
+                                  detail="Se encontró que la vigencia es menor al año actual",
+                                  context={
+                                      "ocr_engine": str(ocr_engine),
+                                      "filename": str(file.filename),
+                                      "stage": "Verificacion",
+                                  },
+                                  timestamp=str(datetime.datetime.now()),
+                                  status_code=422,
+                                  )
         ## 4.5) Guardar imagen en disco para futuros entrenamientos.
         try:
             storage.save_valid_image(  # Guardado de la imagen en storage
