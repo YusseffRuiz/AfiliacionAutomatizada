@@ -32,16 +32,18 @@ class IDImageProcessor:
         self.conf_threshold = conf_threshold
         self.save_debug_images = save_debug_images
         self.debug_dir = Path(debug_dir)
+        self._blurry_threshold = 100
 
         if self.save_debug_images:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------- API pública ----------
-    def get_document_crops(self, bgr, max_candidates: int = 3) -> list[np.ndarray]:
+    def get_document_crops(self, path: str, page: int = 0, max_candidates: int = 3) -> list[np.ndarray]:
         """
         Devuelve una lista de recortes (crops) de los bounding boxes
         detectados por YOLO, ordenados por confianza descendente.
         """
+        bgr = self._load_bgr_from_path(path=path, page=page)
 
         results = self.model(bgr, conf=self.conf_threshold, verbose=False)
 
@@ -143,6 +145,9 @@ class IDImageProcessor:
         preprocessed = self._preprocess_for_ocr(cropped, scale=1.0, h=15, searchwindowssize=7)
 
         return preprocessed
+
+    def public_load_image(self, path: str, page: int=0):
+        return self._load_bgr_from_path(path, page=page)
 
     def public_preprocess_for_ocr(self,bgr: np.ndarray=None, path: str=None, page: int=0, scale: float=3.0, h = 28,
                                   searchwindowssize=21, clahe_clip_limit=3.6, alpha_contrast=1.9,
@@ -334,10 +339,46 @@ class IDImageProcessor:
             y2 = min(h, h - y2)
             return bgr[y1:y2, x1:x2]
 
-    def public_load_image(self, path: str, page: int=0):
-        return self._load_bgr_from_path(path, page=page)
-
     # ---------- Métodos internos ----------
+    def blurry_detected(self, image) -> tuple[bool, float]:
+        """
+        Detecta si la imagen es borrosa usando la Transformada de Fourier.
+        Retorna: (True si es borrosa, valor de la varianza)
+        """
+        if not isinstance(image, np.ndarray): # Se recibe un path en vez de la imagen
+            image = self._load_bgr_from_path(path=image)
+            # Convertimos a escala de grises para el análisis de gradientes
+            try:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            except Exception as e:
+                print("Error en la imagen: ", e)
+        else:
+            gray = image
+        try:
+            h, w = gray.shape
+        except Exception as e:
+            print("Error en la imagen: ", e)
+        (cX, cY) = (int(w / 2.0), int(h / 2.0))
+
+        # 1. Calcular FFT
+        fft = np.fft.fft2(gray)
+        fft_shift = np.fft.fftshift(fft)  # Centrar las frecuencias bajas
+
+        # 2. Aplicar un filtro de paso alto (poner en cero las frecuencias bajas del centro)
+        # Esto elimina la influencia de las áreas lisas de la INE
+        fft_shift[
+            cY - self._blurry_threshold:cY + self._blurry_threshold, cX - self._blurry_threshold:cX + self._blurry_threshold] = 0
+
+        # 3. Regresar al dominio espacial (Inversa de FFT)
+        fft_ishift = np.fft.ifftshift(fft_shift)
+        recon = np.abs(np.fft.ifft2(fft_ishift))
+
+        # 4. Calcular la magnitud media de las frecuencias altas
+        # Una imagen borrosa tendrá este valor muy bajo
+        valor_nitidez = 20 * np.log(np.mean(recon) + 1e-7)  # Escala logarítmica
+        # Umbral sugerido: < 10 es borroso
+        return valor_nitidez < 10, valor_nitidez
+
     def _load_bgr_from_path(self, path: str, page: int = 0) -> np.ndarray:
         """
         Carga cualquier archivo soportado (imagen o PDF) y regresa BGR.
