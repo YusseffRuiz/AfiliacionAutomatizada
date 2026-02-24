@@ -361,7 +361,7 @@ async def parse_ine(
             )
         print("Done scoring")
         valid_ine_expiracy = result.get("vigencia", "0000")
-        if valid_ine_expiracy == "0000":
+        if valid_ine_expiracy == "0000" or valid_ine_expiracy is None:
             raise INEApiError(type="Error en Vigencia",
                 message="No se pudo extraer la vigencia de la INE, volver a tomar la fotografia",
                 detail="El motor OCR devolvió texto vacío o solo ruido.",
@@ -375,7 +375,6 @@ async def parse_ine(
             )
         else:
             try:
-                print(valid_ine_expiracy)
                 valid_ine_expiracy = int(valid_ine_expiracy[-4:]) # Obtenemos los ultimos 4 digitos
             except ValueError:
                 raise INEApiError(type="Error en Vigencia",
