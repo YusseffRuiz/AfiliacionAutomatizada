@@ -375,6 +375,7 @@ async def parse_ine(
             )
         else:
             try:
+                print(valid_ine_expiracy)
                 valid_ine_expiracy = int(valid_ine_expiracy[-4:]) # Obtenemos los ultimos 4 digitos
             except ValueError:
                 raise INEApiError(type="Error en Vigencia",
