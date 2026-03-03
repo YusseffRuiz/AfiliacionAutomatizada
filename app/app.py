@@ -328,7 +328,7 @@ async def parse_ine(
                 status_code=valid_img["status_code"],
                 timestamp=str(datetime.datetime.now()),
             )
-        print("Valid image")
+        # print("Valid image")
         # 4) Ejecutar pipeline con candidatos de YOLO + parser, regresa el Dict
         result = process_with_yolo_v2(processor=processor, parser=parser, agent=agent, ine_imagen=str(tmp_path))
         if 'error'in result:
@@ -359,8 +359,9 @@ async def parse_ine(
                 timestamp=str(datetime.datetime.now()),
                 status_code=422,
             )
-        print("Done scoring")
+        # print("Done scoring")
         valid_ine_expiracy = result.get("vigencia", "0000")
+        print("INE expiracy: ", valid_ine_expiracy)
         if valid_ine_expiracy == "0000" or valid_ine_expiracy is None:
             raise INEApiError(type="Error en Vigencia",
                 message="No se pudo extraer la vigencia de la INE, volver a tomar la fotografia",
@@ -376,7 +377,6 @@ async def parse_ine(
         else:
             try:
                 valid_ine_expiracy = int(valid_ine_expiracy[-4:]) # Obtenemos los ultimos 4 digitos
-                print("INE expiracy: ", valid_ine_expiracy)
             except ValueError:
                 raise INEApiError(type="Error en Vigencia",
                                   message="No se pudo extraer la vigencia de la INE, volver a tomar la fotografia",

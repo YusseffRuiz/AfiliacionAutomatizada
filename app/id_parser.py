@@ -20,7 +20,7 @@ class INEParser:
         self.re_anio = re.compile(r"\b(19|20)\d{2}\b")
         self.re_4digits = re.compile(r"\b\d{4}\b")
         self.re_vigencia = re.compile(
-            r"\b((19|20)\d{2})\s*[-–]?\s*((19|20)\d{2})\b"
+            r"\b((?:19|20)\d{2})\s*[-–]?\s*((?:19|20)\d{2})\b"
         )
         self.init_dom = None
 
@@ -531,7 +531,7 @@ class INEParser:
         # Vigencia: buscar patrón "2021 - 2031" o similar
         m = self.re_vigencia.search(joined)
         if m:
-            data["vigencia"] = f"{m.group(1)}-{m.group(3)}"
+            data["vigencia"] = f"{m.group(1)}-{m.group(2)}"
         else:
             # fallback: encontrar dos años seguidos
             years = self.re_anio.findall(joined)
