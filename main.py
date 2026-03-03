@@ -166,32 +166,32 @@ def main(ine_imagen):
     # print(texto)
     # # Visualizar rápido
     image_response = agent.process_local_image(processed[0])
-    # print("Image OCR Result:", image_response)
+    print("Image OCR Result:", image_response)
     # test_roi = processor.get_roi_crop_percentage(processed, x1=0.10, x2=0.90, y1=0.1, y2=0.90)
-    # plt.figure(figsize=(8, 6))   # <-- tamaño en pulgadas
-    # plt.imshow(processed[0])
-    # plt.title("Imagen preprocesada para Tesseract")
-    # plt.axis("off")
-    # plt.gcf().canvas.mpl_connect('key_press_event', close_on_space)
-    # plt.show()
+    plt.figure(figsize=(8, 6))   # <-- tamaño en pulgadas
+    plt.imshow(processed[0])
+    plt.title("Imagen preprocesada para Tesseract")
+    plt.axis("off")
+    plt.gcf().canvas.mpl_connect('key_press_event', close_on_space)
+    plt.show()
 
-    # test_roi = processor.get_roi_name(processed[0], x1=30, y1=24, x2=42, y2=50, scale = 3.5, h_denoise= 8,
-    #                                       search_window_size = 21, alpha_contrast = 1.2, beta_brightness = -10)
+    test_roi = processor.get_roi_name(processed[0], x1=30, y1=24, x2=42, y2=50, scale = 3.5, h_denoise= 8,
+                                          search_window_size = 21, alpha_contrast = 1.2, beta_brightness = -10)
+
+    plt.figure(figsize=(8, 6))  # <-- tamaño en pulgadas
+    plt.imshow(test_roi)
+    plt.title("Imagen preprocesada para Tesseract")
+    plt.gcf().canvas.mpl_connect('key_press_event', close_on_space)
+    plt.axis("off")
+    plt.show()
+    plt.imshow(processed, cmap="gray")
+    plt.imshow(test_roi)
     #
-    # plt.figure(figsize=(8, 6))  # <-- tamaño en pulgadas
-    # plt.imshow(test_roi)
-    # plt.title("Imagen preprocesada para Tesseract")
-    # plt.gcf().canvas.mpl_connect('key_press_event', close_on_space)
-    # plt.axis("off")
-    # plt.show()
-    # plt.imshow(processed, cmap="gray")
-    # plt.imshow(test_roi)
-    #
-    # plt.title("Imagen recorrada para Tesseract")
-    # plt.gcf().canvas.mpl_connect('key_press_event', close_on_space)
-    # # plt.title("Imagen con debug")
-    # plt.axis("off")
-    # plt.show()
+    plt.title("Imagen recorrada para Tesseract")
+    plt.gcf().canvas.mpl_connect('key_press_event', close_on_space)
+    # plt.title("Imagen con debug")
+    plt.axis("off")
+    plt.show()
     parser = INEParser()
     data = parser.parse(str(image_response))
     print(data)

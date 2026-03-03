@@ -376,6 +376,7 @@ async def parse_ine(
         else:
             try:
                 valid_ine_expiracy = int(valid_ine_expiracy[-4:]) # Obtenemos los ultimos 4 digitos
+                print("INE expiracy: ", valid_ine_expiracy)
             except ValueError:
                 raise INEApiError(type="Error en Vigencia",
                                   message="No se pudo extraer la vigencia de la INE, volver a tomar la fotografia",
