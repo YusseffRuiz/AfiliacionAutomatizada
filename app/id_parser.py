@@ -19,9 +19,7 @@ class INEParser:
         self.re_fecha = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
         self.re_anio = re.compile(r"\b(19|20)\d{2}\b")
         self.re_4digits = re.compile(r"\b\d{4}\b")
-        self.re_vigencia = re.compile(
-            r"\b((?:19|20)\d{2})\s*[-–]?\s*((?:19|20)\d{2})\b"
-        )
+        self.re_vigencia = re.compile(r"\b((?:20)\d{2})\s*[-–]\s*((?:20)\d{2})\b")
         self.re_vigencia_failover = re.compile(r"VIGENCIA\s*[:\.]?\s*((?:19|20)\d{2})", re.IGNORECASE)
         self.init_dom = None
 
