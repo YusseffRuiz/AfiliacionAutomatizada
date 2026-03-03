@@ -22,6 +22,7 @@ class INEParser:
         self.re_vigencia = re.compile(
             r"\b((?:19|20)\d{2})\s*[-–]?\s*((?:19|20)\d{2})\b"
         )
+        self.re_vigencia_failover = re.compile(r"VIGENCIA\s*[:\.]?\s*((?:19|20)\d{2})", re.IGNORECASE)
         self.init_dom = None
 
     # --------- API pública ---------
@@ -102,6 +103,7 @@ class INEParser:
         self._parse_campos_por_regex(lines, data)
         self._parse_sexo(lines, data)
         self._parse_seccion_scoring(lines, data)
+        self._extract_vigencia(lines, data)
 
         # Post-procesar domicilio
         if data["domicilio_lineas"]:
@@ -480,6 +482,26 @@ class INEParser:
 
             data["domicilio_lineas"] = dom_lines
 
+    def _extract_vigencia(self, lines: List[str], data: Dict):
+        joined_text = "\n".join(lines)
+        # 1. formato de rango (Moderno: GH e IJ)
+        m_rango = self.re_vigencia.search(joined_text)
+        if m_rango:
+            data["vigencia"] = f"{m_rango.group(1)}-{m_rango.group(2)}"
+
+        # 2. formato con etiqueta (Viejas: C, D, E, F)
+        # Buscamos primero la palabra clave para no fallar
+        m_etiqueta = self.re_vigencia_failover.search(joined_text)
+        if m_etiqueta:
+            data["vigencia"] = m_etiqueta.group(1)  # Devuelve solo el año de vencimiento
+
+        # 3. Fallback: solo si no hay palabras clave, buscar los últimos dos años
+        years = self.re_anio.findall(joined_text)
+        if len(years) >= 2:
+            data["vigencia"] = f"{years[-2]}-{years[-1]}"
+
+        return None
+
     @staticmethod
     def _parse_sexo(lines: List[str], data: Dict):
         """
@@ -527,16 +549,6 @@ class INEParser:
         m = self.re_fecha.search(joined)
         if m:
             data["fecha_nacimiento"] = m.group(1)
-
-        # Vigencia: buscar patrón "2021 - 2031" o similar
-        m = self.re_vigencia.search(joined)
-        if m:
-            data["vigencia"] = f"{m.group(1)}-{m.group(2)}"
-        else:
-            # fallback: encontrar dos años seguidos
-            years = self.re_anio.findall(joined)
-            if len(years) >= 2:
-                data["vigencia"] = f"{years[-2]}-{years[-1]}"
 
         # Año de registro: linea con "AÑO DE REGISTRO"
         for line in lines:
