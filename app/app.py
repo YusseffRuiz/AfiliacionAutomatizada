@@ -140,13 +140,23 @@ def build_warnings(result: dict) -> List[str]:
 
 
 # ----------------- Inicializar FastAPI y tus objetos -----------------
-
+# Rate limiter, para evitar un ataque multiple y se bloquee tras ciertos intentos
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="INE OCR API",
     description="Servicio para extraer datos de credenciales INE",
     version="1.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 3. Configuración de API Key
+API_KEY_NAME = "MAIN-API-KEY"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
 
 origins_list = ["*"] # Es importante especificar las URL del origen, es decir, de sybi
 
@@ -158,6 +168,10 @@ app.add_middleware(
     allow_methods=["*"],           # Permite todos los métodos (GET, POST, etc.)
     allow_headers=["*"],           # Permite todos los headers
 )
+
+# Middleware para confiar en los headers que envía IIS
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="127.0.0.1")
+
 
 processor = IDImageProcessor(
     yolo_model_path="models/YOLOV8_INE_V2.pt",  # ajusta al modelo que estés usando
@@ -176,16 +190,20 @@ if not api_key:
 agent_mistral = MistralOCRAgent(api_key=api_key)
 
 
+API_KEYS = os.getenv("MAIN_API_KEYS", "").split(",")
+
+async def validar_api_key(header_key: str = Security(api_key_header)):
+    if header_key and header_key in API_KEYS:
+        print("Found key!")
+        return header_key
+    raise HTTPException(
+        status_code=HTTP_403_FORBIDDEN,
+        detail="Acceso denegado: API Key inválida o ausente"
+    )
+
+
 # -----------------Error Handling ---------------------
 logger = logging.getLogger("ine_api")
-
-logging.basicConfig(
-    level=logging.INFO,  # ⬅️ IMPORTANTE
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ],
-)
 
 @app.exception_handler(INEApiError)
 async def ine_api_error_handler(request: Request, exc: INEApiError):
@@ -194,22 +212,23 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
-        timestamp = exc.timestamp,
     )
+
     # Log estructurado
     logger.error(
         "INEApiError",
         extra={
             "error_type": exc.type,
-            "error_message": exc.message,
-            "error_detail": exc.detail,
-            "error_context": exc.context,
+            "message": exc.message,
+            "detail": exc.detail,
+            "context": exc.context,
             "path": str(request.url),
         },
     )
+
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": payload.model_dump(exclude_none=True)},
+        content={"error": payload.dict()},
     )
 
 
@@ -222,7 +241,6 @@ async def generic_error_handler(request: Request, exc: Exception):
         type="internal_error",
         message="Ocurrió un error inesperado procesando la credencial.",
         detail=str(exc),
-        timestamp=str(datetime.datetime.now()),
         context=ErrorContext(
             extra={"path": str(request.url)}
         ),
@@ -230,7 +248,7 @@ async def generic_error_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"error": payload.model_dump(exclude_none=True)},
+        content={"error": payload.dict()},
     )
 
 # ----------------- Endpoint principal -----------------
@@ -255,7 +273,6 @@ async def readyz():
     payload = {
         "status": status,
         "components": components,
-        "timestamp": str(datetime.datetime.now()),
     }
 
     status_code = 200 if all_ok else 503
@@ -271,13 +288,14 @@ async def readyz():
         500: {"model": INEErrorResponse},
     },
 )
+# @limiter.limit("10/minute")  # Limite de 10 peticiones por minuto por IP
 async def parse_ine(
+    # request: Request,
     file: UploadFile = File(...),
-    card_id: Optional[str] = "1234",
-    source: Optional[str] = Form(None),
-    return_debug: bool = Form(False),
+    card_id: Optional[str] = "1",
+    token: str = Depends(validar_api_key),
     page: int = Form(0),
-    ocr_engine: str = "mistral",
+    ocr_engine: str = "paddle",
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
