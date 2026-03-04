@@ -212,6 +212,14 @@ async def validar_api_key(header_key: str = Security(api_key_header)):
 # -----------------Error Handling ---------------------
 logger = logging.getLogger("ine_api")
 
+logging.basicConfig(
+    level=logging.INFO,  # ⬅️ IMPORTANTE
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ],
+)
+
 @app.exception_handler(INEApiError)
 async def ine_api_error_handler(request: Request, exc: INEApiError):
     payload = ErrorPayload(
@@ -219,23 +227,22 @@ async def ine_api_error_handler(request: Request, exc: INEApiError):
         message=exc.message,
         detail=exc.detail,
         context=ErrorContext(**exc.context) if exc.context else None,
+        timestamp = exc.timestamp,
     )
-
     # Log estructurado
     logger.error(
         "INEApiError",
         extra={
             "error_type": exc.type,
-            "message": exc.message,
-            "detail": exc.detail,
-            "context": exc.context,
+            "error_message": exc.message,
+            "error_detail": exc.detail,
+            "error_context": exc.context,
             "path": str(request.url),
         },
     )
-
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": payload.dict()},
+        content={"error": payload.model_dump(exclude_none=True)},
     )
 
 
@@ -248,6 +255,7 @@ async def generic_error_handler(request: Request, exc: Exception):
         type="internal_error",
         message="Ocurrió un error inesperado procesando la credencial.",
         detail=str(exc),
+        timestamp=str(datetime.datetime.now()),
         context=ErrorContext(
             extra={"path": str(request.url)}
         ),
@@ -255,7 +263,7 @@ async def generic_error_handler(request: Request, exc: Exception):
 
     return JSONResponse(
         status_code=500,
-        content={"error": payload.dict()},
+        content={"error": payload.model_dump(exclude_none=True)},
     )
 
 # ----------------- Endpoint principal -----------------
