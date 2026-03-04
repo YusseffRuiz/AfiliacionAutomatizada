@@ -168,16 +168,16 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 origins_list = ["*"] # Es importante especificar las URL del origen, es decir, de sybi
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins_list,           # Permite el Access-Control-Allow-Origin
-    allow_credentials=True,
-    allow_methods=["*"],           # Permite todos los métodos (GET, POST, etc.)
-    allow_headers=["*"],           # Permite todos los headers
-)
-
-# Middleware para confiar en los headers que envía IIS
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="127.0.0.1")
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins_list,           # Permite el Access-Control-Allow-Origin
+#     allow_credentials=True,
+#     allow_methods=["*"],           # Permite todos los métodos (GET, POST, etc.)
+#     allow_headers=["*"],           # Permite todos los headers
+# )
+#
+# # Middleware para confiar en los headers que envía IIS
+# app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="127.0.0.1")
 
 
 processor = IDImageProcessor(
@@ -308,7 +308,7 @@ async def parse_ine(
     # request: Request,
     file: UploadFile = File(...),
     card_id: Optional[str] = "1",
-    token: str = Depends(validar_api_key),
+    # token: str = Depends(validar_api_key),
     page: int = Form(0),
     ocr_engine: str = "paddle",
 ):
