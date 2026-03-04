@@ -486,17 +486,20 @@ class INEParser:
         m_rango = self.re_vigencia.search(joined_text)
         if m_rango:
             data["vigencia"] = f"{m_rango.group(1)}-{m_rango.group(2)}"
+            return None
 
         # 2. formato con etiqueta (Viejas: C, D, E, F)
         # Buscamos primero la palabra clave para no fallar
         m_etiqueta = self.re_vigencia_failover.search(joined_text)
         if m_etiqueta:
             data["vigencia"] = m_etiqueta.group(1)  # Devuelve solo el año de vencimiento
+            return None
 
         # 3. Fallback: solo si no hay palabras clave, buscar los últimos dos años
         years = self.re_anio.findall(joined_text)
         if len(years) >= 2:
             data["vigencia"] = f"{years[-2]}-{years[-1]}"
+            return None
 
         return None
 
