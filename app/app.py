@@ -310,7 +310,7 @@ async def parse_ine(
     card_id: Optional[str] = "1",
     token: str = Depends(validar_api_key),
     page: int = Form(0),
-    ocr_engine: str = "mistral",
+    ocr_engine: str = Form("mistral"),
 ):
     start = time.time()
     tmp_path: Optional[Path] = None
