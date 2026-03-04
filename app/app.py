@@ -21,7 +21,6 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.status import HTTP_403_FORBIDDEN
 
-# IMPORTA tu lógica existente
 from .image_processor import IDImageProcessor
 from .id_parser import INEParser
 from .helper import process_with_yolo_v2
