@@ -3,9 +3,11 @@ import os
 import sys
 import uuid
 
+
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Security, Depends
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -14,8 +16,13 @@ import shutil
 import time
 import datetime
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-# IMPORTA tu lógica existente
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.status import HTTP_403_FORBIDDEN
+
 from .image_processor import IDImageProcessor
 from .id_parser import INEParser
 from .helper import process_with_yolo_v2  # donde tengas esta función
