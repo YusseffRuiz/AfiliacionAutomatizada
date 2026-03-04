@@ -305,7 +305,7 @@ async def readyz():
 )
 @limiter.limit("10/minute")  # Limite de 10 peticiones por minuto por IP
 async def parse_ine(
-    # request: Request,
+    request: Request,
     file: UploadFile = File(...),
     card_id: Optional[str] = "1",
     token: str = Depends(validar_api_key),
