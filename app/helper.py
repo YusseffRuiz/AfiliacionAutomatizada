@@ -52,9 +52,10 @@ def process_with_yolo_v2(processor,
 
         if agent is not None:
             texto = agent.process_local_image(crop)
-            print("Texto obtenido")
+            print("Texto obtenido:")
+            print(texto)
             data_full = parser.parse(texto)  # tu parser ya regresa data_out final
-            print("parser finalizado")
+            # print("parser finalizado")
         else:
             config = r"--psm 6 --oem 1 -c preserve_interword_spaces=1"
             texto = pytesseract.image_to_string(crop, lang="spa", config=config)

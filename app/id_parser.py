@@ -19,9 +19,8 @@ class INEParser:
         self.re_fecha = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
         self.re_anio = re.compile(r"\b(19|20)\d{2}\b")
         self.re_4digits = re.compile(r"\b\d{4}\b")
-        self.re_vigencia = re.compile(
-            r"\b((19|20)\d{2})\s*[-–]?\s*((19|20)\d{2})\b"
-        )
+        self.re_vigencia = re.compile(r"\b((?:20)\d{2})\s*[-–]\s*((?:20)\d{2})\b")
+        self.re_vigencia_failover = re.compile(r"VIGENCIA\s*[:\.]?\s*((?:20)\d{2})", re.IGNORECASE)
         self.init_dom = None
 
     # --------- API pública ---------
@@ -102,6 +101,7 @@ class INEParser:
         self._parse_campos_por_regex(lines, data)
         self._parse_sexo(lines, data)
         self._parse_seccion_scoring(lines, data)
+        self._extract_vigencia(lines, data)
 
         # Post-procesar domicilio
         if data["domicilio_lineas"]:
@@ -480,6 +480,44 @@ class INEParser:
 
             data["domicilio_lineas"] = dom_lines
 
+    def _extract_vigencia(self, lines: List[str], data: Dict):
+        joined_text = "\n".join(lines)
+
+        # 1. Formato de rango (Modelos Modernos: G, H, I, J)
+        # Busca patrones como "2024-2034"
+        m_rango = self.re_vigencia.search(joined_text)
+        if m_rango:
+            data["vigencia"] = f"{m_rango.group(1)}-{m_rango.group(2)}"
+            return None
+
+        # 2. Formato con etiqueta explícita (Modelos Anteriores: C, D, E, F)
+        # Busca la palabra "VIGENCIA" seguida de un año
+        m_etiqueta = self.re_vigencia_failover.search(joined_text)
+        if m_etiqueta:
+            data["vigencia"] = m_etiqueta.group(1)
+            return None
+
+        # 3. Heurística del Valor Máximo (Nueva Capa de Seguridad)
+        # Si no hay etiquetas claras, buscamos todos los años 20xx y tomamos el mayor
+        all_years = self.re_anio.findall(joined_text)
+        # Filtramos para asegurar que solo evaluamos años del siglo XXI (20xx)
+        valid_future_years = [int(y) for y in all_years if y.startswith("20")]
+
+        if valid_future_years:
+            max_year = max(valid_future_years)
+            # Validamos que el año tenga sentido (ej. mayor al actual y menor a 2040)
+            # Esto evita capturar números de folios accidentales que parezcan años
+            if 2024 <= max_year <= 2040:
+                data["vigencia"] = str(max_year)
+                return None
+
+        # 4. Fallback final: Selección por posición (Último recurso)
+        if len(all_years) >= 2:
+            data["vigencia"] = f"{all_years[-2]}-{all_years[-1]}"
+            return None
+
+        return None
+
     @staticmethod
     def _parse_sexo(lines: List[str], data: Dict):
         """
@@ -527,16 +565,6 @@ class INEParser:
         m = self.re_fecha.search(joined)
         if m:
             data["fecha_nacimiento"] = m.group(1)
-
-        # Vigencia: buscar patrón "2021 - 2031" o similar
-        m = self.re_vigencia.search(joined)
-        if m:
-            data["vigencia"] = f"{m.group(1)}-{m.group(3)}"
-        else:
-            # fallback: encontrar dos años seguidos
-            years = self.re_anio.findall(joined)
-            if len(years) >= 2:
-                data["vigencia"] = f"{years[-2]}-{years[-1]}"
 
         # Año de registro: linea con "AÑO DE REGISTRO"
         for line in lines:
