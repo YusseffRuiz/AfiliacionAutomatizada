@@ -307,7 +307,7 @@ async def readyz():
 async def parse_ine(
     request: Request,
     file: UploadFile = File(...),
-    card_id: Optional[str] = "1",
+    card_id: str = Form("1"),
     token: str = Depends(validar_api_key),
     page: int = Form(0),
     ocr_engine: str = Form("mistral"),
