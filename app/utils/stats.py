@@ -28,7 +28,7 @@ class StatsManager:
                 "outcomes": {"success": 0, "failure": 0},
                 "last_update": str(datetime.datetime.now())
             }
-            with open(self.file_path, "w") as f:
+            with open(file_path, "w") as f:
                 json.dump(initial_stats, f, indent=4)
 
     def log_usage(self, engine: str, success: bool, response_time: float):
