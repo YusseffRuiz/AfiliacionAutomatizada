@@ -27,7 +27,7 @@ from .image_processor import IDImageProcessor
 from .id_parser import INEParser
 from .helper import process_with_yolo_v2  # donde tengas esta función
 from .ocr_agent import MistralOCRAgent, PaddleOCREngine
-from .utils import health, storage
+from .utils import health, storage, stats
 
 # ----------------- Modelos Pydantic de respuesta -----------------
 class ErrorContext(BaseModel):
@@ -163,7 +163,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 API_KEY_NAME = "MAIN-API-KEY"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-
+stats_tracker = stats.StatsManager()
 
 origins_list = ["*"] # Es importante especificar las URL del origen, es decir, de sybi
 
@@ -476,23 +476,27 @@ async def parse_ine(
             seccion=result.get("seccion"),
             vigencia=result.get("vigencia")
         )
-
+        processing_time = int((time.time() - start) * 1000)
         meta = INEMeta(
             request_id=request_id,
             score=score,
             ocr_engine=ocr_engine,
             parser_version="ine-mvp-v1",
-            processing_ms=int((time.time() - start) * 1000),
+            processing_ms=processing_time,
             warnings=build_warnings(result),
         )
-
+        stats_tracker.log_usage(engine=ocr_engine, success=True, response_time=processing_time)
         response = INEOKResponse(status="ok", data=data, meta=meta)
         return JSONResponse(content=response.model_dump(exclude_none=True))
     except INEApiError:
+        processing_time = int((time.time() - start) * 1000)
+        stats_tracker.log_usage(engine=ocr_engine, success=False, response_time=processing_time)
         raise
 
     except RuntimeError as e:
         # Errores de negocio tipo "no id detectada", etc.
+        processing_time = int((time.time() - start) * 1000)
+        stats_tracker.log_usage(engine=ocr_engine, success=False, response_time=processing_time)
         err = INEErrorResponse(
             status="error",
             error=INEErrorDetail(
@@ -505,10 +509,14 @@ async def parse_ine(
         raise HTTPException(status_code=422, detail=err.model_dump(exclude_none=True)["error"])
 
     except HTTPException:
+        processing_time = int((time.time() - start) * 1000)
+        stats_tracker.log_usage(engine=ocr_engine, success=False, response_time=processing_time)
         # Re-lanzar HTTPExceptions
         raise
 
     except Exception as e:
+        processing_time = int((time.time() - start) * 1000)
+        stats_tracker.log_usage(engine=ocr_engine, success=False, response_time=processing_time)
         err = INEErrorResponse(
             status="error",
             error=INEErrorDetail(
