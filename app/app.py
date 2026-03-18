@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -535,3 +536,17 @@ async def parse_ine(
                     tmp_path.unlink()
             except Exception:
                 pass
+
+
+@app.get("/api/admin/stats")
+async def get_stats(token: str = Depends(validar_api_key)):
+    with open("logs/stats/usage_stats_global.json", "r") as f:
+        return json.load(f)
+
+@app.get("/api/admin/stats/{year}/{month}")
+async def get_monthly_stats(year: int, month: int, token: str = Depends(validar_api_key)):
+    file_path = f"logs/stats/stats_{year}_{month:02d}.json"
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    raise HTTPException(status_code=404, detail="No hay datos para ese periodo.")
