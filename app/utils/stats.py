@@ -11,7 +11,7 @@ class StatsManager:
         self.current_file = os.path.join(self.file_path, "usage_stats_global.json")
         self.lock = Lock()
         os.makedirs(self.file_path, exist_ok=True)
-        self._ensure_file()
+        self._ensure_file(self.current_file)
 
     def _get_monthly_path(self):
         now = datetime.datetime.now()
