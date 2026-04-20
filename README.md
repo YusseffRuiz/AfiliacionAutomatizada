@@ -238,3 +238,10 @@ Entrenar YOLOv8 multicampo para detectar zonas de:
 * fecha de nacimiento
 
 Implementar un modelo end-to-end tipo Donut (OCR transformer).
+
+## Cambios en la Version 1.2
+- Logs de uso y funcionamiento totales y por mes.
+- Extracción de datos por medio de la curp.
+  - Bandera para revisarlo, debido a que hace el sistema más lento, pero extrae información relevante.
+  - Poll a la página del gobierno. Posible bloqueo. Realizar pruebas internas y verificar.
+  - Si falla, realiza el procedimiento regular.

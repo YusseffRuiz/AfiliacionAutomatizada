@@ -2,9 +2,6 @@ import re
 from typing import Dict, Optional, List, Tuple
 from curp import CURP, CURPValueError
 from postalcodes_mexico.postalcodes_mexico import places
-from sentry_sdk import init
-from sympy.physics.units import mmu
-
 
 class INEParser:
     """

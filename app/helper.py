@@ -1,3 +1,4 @@
+import httpx
 import pytesseract
 
 
@@ -52,8 +53,8 @@ def process_with_yolo_v2(processor,
 
         if agent is not None:
             texto = agent.process_local_image(crop)
-            print("Texto obtenido:")
-            print(texto)
+            # print("Texto obtenido:")
+            # print(texto)
             data_full = parser.parse(texto)  # tu parser ya regresa data_out final
             # print("parser finalizado")
         else:
@@ -69,7 +70,11 @@ def process_with_yolo_v2(processor,
         if score > best_score:
             best_score = score
             best_data = data_full
-        print("got best data")
+        # print("got best data")
+
+        ## Verificacion de datos, si el nombre esta mal, llamar API
+
+
         # Si ya estamos bastante bien, podemos parar
         if score >= score_ok_threshold:
             best_data["attempt"] = f"yolo_candidate_{i}"
@@ -123,3 +128,29 @@ def extra_tesseract_process(crop_image, processor, parser, texto_full):
 
 
     return best_data
+
+
+async def curp_filler(curp: str):
+    """
+    Contacto a API externa de la empresa para extracción de datos oficiales del registro civil
+    :param curp: string de la curp
+    :return: Nombres y Apellidos
+    """
+    url = "https://api.sybiml.com/v1/public/curp/consultar"
+    headers = {
+        "x-api-key": "A9F3K7P2L8Q4Z6X1BC99",  # Tu llave de Postman
+        "Content-Type": "application/json"
+    }
+    payload = {"curp": curp}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, json=payload, headers=headers)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"API CURP respondió con error {response.status_code}")
+                return None
+    except Exception as e:
+        print(f"Error de conexión con API CURP: {e}")
+        return None
